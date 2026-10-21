@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Perfil de usuario registrado en StreamBox Colombia",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN", "SOPORTE", "VENTAS", "CLIENTE"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt"]
+    },
+    "PaymentRequest": {
+      "title": "PaymentRequest",
+      "description": "Comprobante de pago manual reportado por Nequi o Daviplata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "userEmail": { "type": "string", "format": "email", "maxLength": 120 },
+        "method": { "type": "string", "enum": ["NEQUI", "DAVIPLATA", "BANCOLOMBIA", "TARJETA_CREDITO"] },
+        "referenceNumber": { "type": "string", "maxLength": 80 },
+        "totalCOP": { "type": "number" },
+        "status": { "type": "string", "enum": ["PAGO_REPORTADO", "PAGO_CONFIRMADO", "PAGO_RECHAZADO"] },
+        "reportedAt": { "type": "string", "format": "date-time" },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "verificationNote": { "type": "string", "maxLength": 500 },
+        "rejectionReason": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "orderId", "userId", "method", "referenceNumber", "totalCOP", "status", "reportedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Orden de compra de suscripciones en StreamBox",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userEmail": { "type": "string", "format": "email", "maxLength": 120 },
+        "totalCOP": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDIENTE_PAGO", "PAGO_REPORTADO", "ENTREGADO", "CANCELADO"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "deliveredAt": { "type": "string", "format": "date-time" },
+        "credentials": { "type": "string", "maxLength": 1000 },
+        "instructions": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "userId", "userEmail", "totalCOP", "status", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Servicio o producto digital del catálogo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "brand": { "type": "string", "maxLength": 80 },
+        "category": { "type": "string", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["ACTIVE", "OUT_OF_STOCK", "PRICE_PENDING", "HIDDEN", "DRAFT"] }
+      },
+      "required": ["id", "name", "brand", "category", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Registro de auditoría inmutable de seguridad",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "format": "email", "maxLength": 120 },
+        "actorRole": { "type": "string", "maxLength": 40 },
+        "action": { "type": "string", "maxLength": 80 },
+        "target": { "type": "string", "maxLength": 80 },
+        "details": { "type": "string", "maxLength": 2000 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "success": { "type": "boolean" }
+      },
+      "required": ["id", "actorEmail", "action", "timestamp", "success"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Perfiles de usuarios. Sólo el propio usuario o SUPER_ADMIN pueden leer su información privada."
+    },
+    "/payments/{paymentId}": {
+      "schema": "PaymentRequest",
+      "description": "Comprobantes de pago. Los clientes sólo leen/crean sus propios comprobantes; sólo SUPER_ADMIN puede confirmar o rechazar."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Pedidos de clientes. Clientes sólo acceden a sus propios pedidos; sólo SUPER_ADMIN puede actualizar estado y credenciales."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Catálogo comercial de StreamBox. Lectura pública; escritura restringida a SUPER_ADMIN mediante Custom Claims."
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Registro de auditoría inmutable. Sólo lectura y escritura restringida por administradores y sistema."
+    }
+  }
+}

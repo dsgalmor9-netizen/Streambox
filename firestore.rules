@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isSuperAdmin() {
+      return isEmailVerified() &&
+        request.auth.token.role == 'SUPER_ADMIN';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ==================================================
+    // USERS COLLECTION
+    // ==================================================
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
+
+      // Users can register their profile, but CANNOT self-assign SUPER_ADMIN role
+      allow create: if isOwner(userId) &&
+        incoming().uid == request.auth.uid &&
+        incoming().email is string &&
+        incoming().name is string &&
+        incoming().name.size() <= 120 &&
+        incoming().role == 'CLIENTE' &&
+        incoming().createdAt == request.time;
+
+      // Users can only update their display name or phone; role changes strictly require isSuperAdmin()
+      allow update: if (
+        isOwner(userId) &&
+        incoming().uid == existing().uid &&
+        incoming().role == existing().role &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone']) &&
+        incoming().name.size() <= 120
+      ) || isSuperAdmin();
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==================================================
+    // PRODUCTS COLLECTION (Catálogo)
+    // ==================================================
+    match /products/{productId} {
+      // Anyone can read catalog items
+      allow read: if true;
+
+      // ONLY authenticated SUPER_ADMIN with custom claim can mutate catalog
+      allow create, update, delete: if isSuperAdmin() && isValidId(productId);
+    }
+
+    // ==================================================
+    // PAYMENTS COLLECTION (Comprobantes Nequi / Daviplata)
+    // ==================================================
+    match /payments/{paymentId} {
+      allow get: if isSuperAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow list: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // Clients can create payment reports for themselves
+      allow create: if isSignedIn() &&
+        incoming().userId == request.auth.uid &&
+        incoming().totalCOP is number &&
+        incoming().totalCOP > 0 &&
+        incoming().status == 'PAGO_REPORTADO' &&
+        incoming().reportedAt == request.time;
+
+      // ONLY SUPER_ADMIN can confirm or reject payments
+      allow update: if isSuperAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'verifiedAt', 'verificationNote', 'rejectionReason'
+        ]);
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==================================================
+    // ORDERS COLLECTION
+    // ==================================================
+    match /orders/{orderId} {
+      allow get: if isSuperAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow list: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // Clients can create orders for themselves
+      allow create: if isSignedIn() &&
+        incoming().userId == request.auth.uid &&
+        incoming().totalCOP is number &&
+        incoming().createdAt == request.time;
+
+      // Only SUPER_ADMIN can deliver credentials or change order state
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==================================================
+    // AUDIT LOGS (Inmutables)
+    // ==================================================
+    match /audit_logs/{logId} {
+      allow read: if isSuperAdmin();
+      allow create: if isSignedIn() && incoming().timestamp == request.time;
+      allow update, delete: if false; // Logs are strictly immutable
+    }
+
+    // ==================================================
+    // SETTINGS COLLECTION
+    // ==================================================
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+  }
+}

@@ -1,0 +1,274 @@
+import React, { useState } from 'react';
+import { useStore } from '../../context/StoreContext';
+import { StreamBoxLogo } from '../common/StreamBoxLogo';
+import { X, Lock, Mail, User, Phone, CheckCircle, ShieldAlert } from 'lucide-react';
+
+interface AuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+  const { login, register } = useStore();
+
+  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'RECOVERY'>('LOGIN');
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (mode === 'LOGIN') {
+      if (!email.trim()) {
+        setError('Por favor ingresa tu correo electrónico.');
+        return;
+      }
+      const ok = login(email);
+      if (ok) {
+        onClose();
+      } else {
+        setError('No encontramos una cuenta con ese correo. Puedes registrarte en 10 segundos.');
+      }
+    } else if (mode === 'REGISTER') {
+      if (!name.trim() || !email.trim()) {
+        setError('Por favor completa tu nombre y correo electrónico.');
+        return;
+      }
+      const ok = register(name, email, phone);
+      if (ok) {
+        onClose();
+      } else {
+        setError('Ya existe un usuario registrado con este correo electrónico.');
+      }
+    } else if (mode === 'RECOVERY') {
+      if (!email.trim()) {
+        setError('Por favor ingresa tu correo electrónico.');
+        return;
+      }
+      setSuccess('Si la cuenta existe, hemos enviado un enlace de restablecimiento a tu correo.');
+    }
+  };
+
+  const handleQuickLogin = (quickEmail: string) => {
+    login(quickEmail);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity"
+        onClick={onClose}
+      />
+
+      <div className="relative w-full max-w-md bg-[#12121B] border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 z-10 overflow-hidden">
+        {/* Glow corner accent */}
+        <div className="absolute -top-12 -right-12 w-36 h-36 bg-purple-600/20 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-12 -left-12 w-36 h-36 bg-cyan-600/20 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80">
+          <StreamBoxLogo size="sm" showSlogan={false} />
+          <button
+            onClick={onClose}
+            className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="mt-4 mb-6 text-center">
+          <h3 className="text-xl font-bold text-white">
+            {mode === 'LOGIN' && 'Bienvenido a StreamBox'}
+            {mode === 'REGISTER' && 'Crea tu Cuenta'}
+            {mode === 'RECOVERY' && 'Recuperar Contraseña'}
+          </h3>
+          <p className="text-xs text-zinc-400 mt-1">
+            {mode === 'LOGIN' && 'Ingresa para consultar tus pedidos y comprar servicios'}
+            {mode === 'REGISTER' && 'Accede a precios mayoristas y entrega inmediata'}
+            {mode === 'RECOVERY' && 'Te ayudamos a recuperar el acceso a tu cuenta'}
+          </p>
+        </div>
+
+        {/* Quick Demo Access Bar */}
+        {mode === 'LOGIN' && (
+          <div className="mb-6 p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs">
+            <div className="text-[11px] font-semibold text-zinc-300 mb-2 flex items-center justify-between">
+              <span>Acceso Rápido para Pruebas:</span>
+              <span className="text-cyan-400 text-[10px]">1 clic</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('carlos.cliente@gmail.com')}
+                className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-left font-medium transition-colors"
+              >
+                <div className="font-semibold text-white">Carlos (Cliente)</div>
+                <div className="text-[10px] text-zinc-400 truncate">carlos.cliente@...</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('d.s.gal.mor.9@gmail.com')}
+                className="px-2.5 py-1.5 rounded-lg bg-purple-950/80 hover:bg-purple-900/80 text-purple-200 border border-purple-800/50 text-left font-medium transition-colors"
+              >
+                <div className="font-semibold text-white flex items-center gap-1">
+                  <span>Admin Master</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                </div>
+                <div className="text-[10px] text-purple-300 truncate">d.s.gal.mor.9@...</div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === 'REGISTER' && (
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Nombre Completo
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Tu nombre y apellido"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+              Correo Electrónico
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+              <input
+                type="email"
+                required
+                placeholder="ejemplo@correo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+          </div>
+
+          {mode === 'REGISTER' && (
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Teléfono Celular (Colombia)
+              </label>
+              <div className="relative">
+                <Phone className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="tel"
+                  placeholder="300 123 4567"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {mode !== 'RECOVERY' && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-zinc-300">
+                  Contraseña
+                </label>
+                {mode === 'LOGIN' && (
+                  <button
+                    type="button"
+                    onClick={() => setMode('RECOVERY')}
+                    className="text-[11px] text-purple-400 hover:underline"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {success && (
+            <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-300 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              <span>{success}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full py-2.5 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:opacity-95 shadow-[0_0_15px_rgba(168,85,247,0.35)] transition-all cursor-pointer mt-2"
+          >
+            {mode === 'LOGIN' && 'Iniciar Sesión'}
+            {mode === 'REGISTER' && 'Completar Registro'}
+            {mode === 'RECOVERY' && 'Enviar Instrucciones'}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-xs text-zinc-400">
+          {mode === 'LOGIN' ? (
+            <p>
+              ¿No tienes cuenta aún?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('REGISTER');
+                  setError(null);
+                }}
+                className="text-cyan-400 font-semibold hover:underline"
+              >
+                Regístrate aquí
+              </button>
+            </p>
+          ) : (
+            <p>
+              ¿Ya tienes una cuenta?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('LOGIN');
+                  setError(null);
+                }}
+                className="text-purple-400 font-semibold hover:underline"
+              >
+                Inicia sesión
+              </button>
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
