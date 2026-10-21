@@ -4,6 +4,7 @@ import { useStore } from '../../context/StoreContext';
 import { ShoppingBag, Zap, Check, ChevronRight, Clock, ShieldCheck, HelpCircle } from 'lucide-react';
 
 import { BrandLogo } from '../common/BrandLogo';
+import { useToast } from '../common/Toast';
 
 interface ProductCardProps {
   product: Product;
@@ -17,6 +18,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onInstantBuy,
 }) => {
   const { addToCart } = useStore();
+  const { success } = useToast();
   const [selectedModalityId, setSelectedModalityId] = useState(
     product.modalities[0]?.id || ''
   );
@@ -37,6 +39,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     e.stopPropagation();
     if (!isPurchasable) return;
     addToCart(product, selectedModalityId, 1);
+    success(`${product.name} (${selectedModality?.name || 'Suscripción'}) añadido al carrito.`);
     setAddedAnim(true);
     setTimeout(() => setAddedAnim(false), 1200);
   };

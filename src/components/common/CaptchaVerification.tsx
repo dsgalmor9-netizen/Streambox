@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, RotateCw } from 'lucide-react';
 
 interface CaptchaVerificationProps {
   onVerify: (isValid: boolean) => void;
@@ -10,117 +10,111 @@ export const CaptchaVerification: React.FC<CaptchaVerificationProps> = ({
   onVerify,
   isVerified,
 }) => {
-  const [num1, setNum1] = useState(0);
-  const [num2, setNum2] = useState(0);
-  const [userAnswer, setUserAnswer] = useState('');
-  const [hasAttempted, setHasAttempted] = useState(false);
-  const [isBotDetected, setIsBotDetected] = useState(false);
+  const [status, setStatus] = useState<'verifying' | 'verified'>('verifying');
+  const [dots, setDots] = useState('');
 
-  const generateChallenge = () => {
-    const a = Math.floor(Math.random() * 8) + 2; // 2 to 9
-    const b = Math.floor(Math.random() * 8) + 1; // 1 to 8
-    setNum1(a);
-    setNum2(b);
-    setUserAnswer('');
-    setHasAttempted(false);
-    onVerify(false);
-  };
-
+  // Automatic Cloudflare Turnstile simulation: verifies automatically in 1.1s
   useEffect(() => {
-    generateChallenge();
-  }, []);
-
-  const handleInputChange = (val: string) => {
-    setUserAnswer(val);
-    setHasAttempted(true);
-
-    const parsed = parseInt(val.trim(), 10);
-    if (!isNaN(parsed) && parsed === num1 + num2) {
-      setIsBotDetected(false);
-      onVerify(true);
-    } else {
-      onVerify(false);
+    if (isVerified) {
+      setStatus('verified');
+      return;
     }
-  };
 
-  const handleCheckboxClick = () => {
-    if (isVerified) return;
-    // When clicking checkbox directly, prompt for numeric solve
-    const parsed = parseInt(userAnswer.trim(), 10);
-    if (!isNaN(parsed) && parsed === num1 + num2) {
+    setStatus('verifying');
+    const timer = setTimeout(() => {
+      setStatus('verified');
       onVerify(true);
-    } else {
-      setHasAttempted(true);
-    }
+    }, 1100);
+
+    return () => clearTimeout(timer);
+  }, [isVerified, onVerify]);
+
+  // Subtle animated dots for the "Verificando..." text
+  useEffect(() => {
+    if (status !== 'verifying') return;
+    const interval = setInterval(() => {
+      setDots((prev) => (prev.length >= 3 ? '' : prev + '.'));
+    }, 300);
+    return () => clearInterval(interval);
+  }, [status]);
+
+  const handleManualTrigger = () => {
+    if (status === 'verifying') return;
+    setStatus('verifying');
+    setTimeout(() => {
+      setStatus('verified');
+      onVerify(true);
+    }, 900);
   };
 
   return (
-    <div className="w-full bg-zinc-900/90 border border-zinc-700/80 rounded-xl p-3 select-none">
+    <div className="w-full bg-[#111119] border border-zinc-700/80 hover:border-zinc-600 rounded-xl p-3 shadow-md transition-all select-none relative overflow-hidden">
+      {/* Top subtle glow bar */}
+      <div
+        className={`absolute top-0 left-0 right-0 h-0.5 transition-all duration-700 ${
+          status === 'verified'
+            ? 'bg-gradient-to-r from-emerald-500 to-teal-400 opacity-100'
+            : 'bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500 animate-pulse opacity-80'
+        }`}
+      />
+
       <div className="flex items-center justify-between gap-3">
-        {/* Checkbox item */}
+        {/* Left: Checkbox / Spinner & Status */}
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={handleCheckboxClick}
-            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all ${
-              isVerified
-                ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]'
-                : 'bg-zinc-800 border-zinc-600 hover:border-purple-400'
+            onClick={handleManualTrigger}
+            title={status === 'verified' ? 'Verificación activa' : 'Verificar'}
+            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
+              status === 'verified'
+                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.4)]'
+                : 'bg-zinc-800/80 border-orange-500/60 text-orange-400'
             }`}
           >
-            {isVerified && <CheckCircle2 className="w-4 h-4" />}
+            {status === 'verified' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in-50 duration-300" />
+            ) : (
+              <RotateCw className="w-3.5 h-3.5 animate-spin text-orange-400" />
+            )}
           </button>
+
           <div className="text-left">
             <span className="text-xs font-semibold text-zinc-200 block">
-              {isVerified ? 'Verificación exitosa: Eres humano' : 'No soy un robot (CAPTCHA)'}
+              {status === 'verified'
+                ? 'Verificación completada: Eres humano'
+                : `Verificando que eres humano${dots}`}
             </span>
-            <span className="text-[10px] text-zinc-500 block">
-              Protección anti-bot de StreamBox Colombia
+            <span className="text-[10px] text-zinc-400 block">
+              {status === 'verified'
+                ? 'Protegido por Cloudflare Turnstile'
+                : 'Comprobación de seguridad automática'}
             </span>
           </div>
         </div>
 
-        {/* Brand security badge */}
-        <div className="flex items-center gap-1.5 text-zinc-500 text-[10px]">
-          <ShieldCheck className="w-4 h-4 text-cyan-400" />
-          <span className="font-mono">Security</span>
+        {/* Right: Cloudflare Turnstile Branding */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400">
+            {/* Cloudflare logo icon style */}
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
+                fill="#F38020"
+              />
+              <path
+                d="M19 14h-4l2-4h-3l4-5v3h3l-2 6z"
+                fill="#FAAE40"
+              />
+            </svg>
+            <div className="leading-tight text-right hidden sm:block">
+              <span className="font-bold text-zinc-300 block text-[9px] uppercase tracking-wide">
+                Cloudflare
+              </span>
+              <span className="text-[8px] text-zinc-500 block">Turnstile</span>
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* Challenge puzzle if not verified yet */}
-      {!isVerified && (
-        <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-purple-300 font-bold bg-purple-950/80 border border-purple-800/60 px-2 py-1 rounded-md">
-              ¿Cuánto es {num1} + {num2}?
-            </span>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder="Resultado"
-              value={userAnswer}
-              onChange={(e) => handleInputChange(e.target.value)}
-              className="w-20 bg-black/60 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white text-center focus:outline-none focus:border-cyan-400"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={generateChallenge}
-            title="Cambiar desafío"
-            className="p-1 text-zinc-400 hover:text-zinc-200 rounded hover:bg-zinc-800 transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {hasAttempted && !isVerified && (
-        <div className="mt-2 text-[10px] text-rose-400 flex items-center gap-1">
-          <AlertCircle className="w-3 h-3 shrink-0" />
-          <span>Resuelve la suma para validar que eres una persona real.</span>
-        </div>
-      )}
     </div>
   );
 };

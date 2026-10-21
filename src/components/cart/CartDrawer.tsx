@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { X, Trash2, Plus, Minus, Tag, ArrowRight, ShoppingBag } from 'lucide-react';
 import { BrandLogo } from '../common/BrandLogo';
+import { useToast } from '../common/Toast';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     removePromoCode,
   } = useStore();
 
+  const { success: toastSuccess, error: toastError } = useToast();
   const [promoInput, setPromoInput] = useState('');
   const [promoMessage, setPromoMessage] = useState<{ text: string; error?: boolean } | null>(null);
 
@@ -38,7 +40,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     const res = applyPromoCode(promoInput);
     setPromoMessage({ text: res.message, error: !res.success });
     if (res.success) {
+      toastSuccess(res.message);
       setPromoInput('');
+    } else {
+      toastError(res.message);
     }
   };
 

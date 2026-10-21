@@ -19,6 +19,7 @@ import { ProductDetailModal } from './components/product/ProductDetailModal';
 import { CookieConsentBanner } from './components/common/CookieConsentBanner';
 import { Product } from './types';
 import { AlertTriangle, ShieldAlert, Loader2 } from 'lucide-react';
+import { ToastProvider } from './components/common/Toast';
 
 const AppContent: React.FC = () => {
   const { settings, currentUser, isAuthLoading } = useStore();
@@ -326,7 +327,9 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <StoreProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </StoreProvider>
   );
 }

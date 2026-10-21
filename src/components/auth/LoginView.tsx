@@ -4,6 +4,8 @@ import { StreamBoxLogo } from '../common/StreamBoxLogo';
 import {
   Mail,
   Lock,
+  Eye,
+  EyeOff,
   ShieldAlert,
   CheckCircle,
   ArrowRight,
@@ -11,12 +13,12 @@ import {
   Loader2,
   X,
   User,
-  ChevronRight,
-  UserPlus,
-  Sparkles,
   Phone,
+  Sparkles,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { CaptchaVerification } from '../common/CaptchaVerification';
+import { OtpVerificationCard } from './otp/OtpVerificationCard';
 
 interface LoginViewProps {
   onNavigate: (view: string) => void;
@@ -25,7 +27,7 @@ interface LoginViewProps {
 export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
   const { loginWithCredentials, loginWithGoogle, register } = useStore();
 
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'RECOVERY'>('LOGIN');
+  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'RECOVERY' | 'OTP_VERIFY'>('LOGIN');
   const [email, setEmail] = useState(() => {
     try {
       return localStorage.getItem('streambox_remembered_email') || '';
@@ -34,6 +36,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
     }
   });
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [rememberMe, setRememberMe] = useState(() => {
@@ -48,9 +51,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Google Account Chooser Modal state
-  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
-  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+  // Fallback Google Modal (prompts for the user's OWN account, with NO accounts list)
+  const [isGoogleCustomModalOpen, setIsGoogleCustomModalOpen] = useState(false);
   const [customGoogleEmail, setCustomGoogleEmail] = useState('');
   const [customGoogleName, setCustomGoogleName] = useState('');
 
@@ -61,9 +63,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
     setIsLoading(true);
 
     try {
-      // Captcha Check: Validate user is human before proceeding
       if (!isCaptchaVerified) {
-        setError('Por favor resuelve el CAPTCHA para verificar que eres humano.');
+        setError('Por favor espera a que la verificación de seguridad automática finalice.');
         setIsLoading(false);
         return;
       }
@@ -78,7 +79,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
         const res = await loginWithCredentials(email, password);
 
         if (res.success) {
-          // Persist remember me preference
           try {
             if (rememberMe) {
               localStorage.setItem('streambox_remembered_email', email.trim());
@@ -88,10 +88,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
               localStorage.setItem('streambox_remember_me', 'false');
             }
           } catch {
-            // Ignore localStorage errors
+            // Ignore
           }
 
-          // Redirección según rol verificado
           if (res.role === 'SUPER_ADMIN') {
             onNavigate('admin');
           } else {
@@ -106,20 +105,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
           setIsLoading(false);
           return;
         }
-        const ok = register(name, email, phone);
-        if (ok) {
-          try {
-            if (rememberMe) {
-              localStorage.setItem('streambox_remembered_email', email.trim());
-            }
-          } catch {
-            // Ignore
-          }
-          setSuccess('¡Cuenta de cliente creada con éxito! Ingresando a la tienda...');
-          setTimeout(() => onNavigate('inicio'), 1000);
-        } else {
-          setError('Ya existe un usuario con este correo electrónico. Por favor inicia sesión.');
+        if (password.length < 6) {
+          setError('La contraseña debe tener al menos 6 caracteres.');
+          setIsLoading(false);
+          return;
         }
+
+        // Open OTP Verification (OTP ANIMATION V15) before finishing registration
+        setIsLoading(false);
+        setMode('OTP_VERIFY');
       } else if (mode === 'RECOVERY') {
         if (!email.trim()) {
           setError('Por favor ingresa tu correo electrónico.');
@@ -135,325 +129,387 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleOpenGoogleModal = () => {
-    setError(null);
-    setIsGoogleModalOpen(true);
+  // Called when OTP verification succeeds
+  const handleOtpVerified = () => {
+    const ok = register(name, email, phone);
+    if (ok) {
+      try {
+        if (rememberMe) {
+          localStorage.setItem('streambox_remembered_email', email.trim());
+        }
+      } catch {
+        // Ignore
+      }
+      setSuccess('¡Identidad verificada y cuenta creada con éxito! Redirigiendo a la tienda...');
+      setTimeout(() => onNavigate('inicio'), 1000);
+    } else {
+      setError('Ya existe un usuario con este correo electrónico.');
+      setMode('REGISTER');
+    }
   };
 
-  const handleSelectGoogleAccount = async (targetEmail: string, targetName?: string) => {
-    if (!targetEmail.trim()) {
-      setError('Por favor ingresa un correo electrónico de Google válido.');
-      return;
-    }
+  // Google Sign-In: triggers popup, or opens prompt for personal Google email if popup blocked
+  const handleGoogleSignInClick = async () => {
     setError(null);
     setIsLoading(true);
-    setIsGoogleModalOpen(false);
 
     try {
-      const res = await loginWithGoogle(targetEmail, targetName);
+      const res = await loginWithGoogle();
       if (res.success) {
-        // Redirección estricta: Únicamente d.s.gal.mor.9@gmail.com va al panel de administración.
-        // Cualquier otro usuario (como pepitoperez@gmail.com) ingresa a la tienda como CLIENTE.
+        if (res.role === 'SUPER_ADMIN') {
+          onNavigate('admin');
+        } else {
+          onNavigate('inicio');
+        }
+      } else if (res.error === 'POPUP_FALLBACK') {
+        // In preview sandbox, prompt for user's own Google account
+        setIsGoogleCustomModalOpen(true);
+      } else {
+        setError(res.error || 'No fue posible iniciar sesión con Google.');
+      }
+    } catch {
+      setIsGoogleCustomModalOpen(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCustomGoogleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customGoogleEmail.trim()) {
+      setError('Por favor ingresa tu correo de Google.');
+      return;
+    }
+
+    setIsLoading(true);
+    setIsGoogleCustomModalOpen(false);
+
+    try {
+      const res = await loginWithGoogle(customGoogleEmail, customGoogleName);
+      if (res.success) {
         if (res.role === 'SUPER_ADMIN') {
           onNavigate('admin');
         } else {
           onNavigate('inicio');
         }
       } else {
-        setError(res.error || 'No fue posible iniciar sesión con la cuenta de Google seleccionada.');
+        setError(res.error || 'Error al autenticar con Google.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Error al autenticar con Google.');
+      setError(err?.message || 'Error al conectar con Google.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCustomGoogleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customGoogleEmail.trim()) return;
-    handleSelectGoogleAccount(customGoogleEmail, customGoogleName);
-  };
-
   return (
     <div className="min-h-[85vh] flex items-center justify-center px-4 py-12 relative overflow-hidden">
       {/* Background radial glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 right-1/4 w-[350px] h-[350px] bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-10 right-1/4 w-[380px] h-[380px] bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-md bg-[#12121B] border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 z-10 relative">
-        <div className="text-center pb-6 border-b border-zinc-800/80">
-          <div className="inline-flex justify-center mb-3">
-            <StreamBoxLogo size="lg" showSlogan={false} />
-          </div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">
-            {mode === 'LOGIN' && 'Acceso a StreamBox'}
-            {mode === 'REGISTER' && 'Crear Nueva Cuenta'}
-            {mode === 'RECOVERY' && 'Recuperar Contraseña'}
-          </h2>
-          <p className="text-xs text-zinc-400 mt-1.5">
-            {mode === 'LOGIN' && 'Inicio de sesión único para clientes y administradores'}
-            {mode === 'REGISTER' && 'Regístrate con tu correo para comprar suscripciones y licencias'}
-            {mode === 'RECOVERY' && 'Ingresa tu correo para recibir instrucciones de restablecimiento'}
-          </p>
+      {/* Render OTP Verification Card (OTP ANIMATION V15) if user is verifying */}
+      {mode === 'OTP_VERIFY' ? (
+        <div className="w-full z-10">
+          <OtpVerificationCard
+            email={email}
+            targetCode="8045"
+            onVerified={handleOtpVerified}
+            onCancel={() => setMode('REGISTER')}
+            theme="streambox"
+          />
         </div>
-
-        {/* Security / Architecture Badge */}
-        <div className="mt-4 mb-5 p-3 rounded-xl bg-purple-950/40 border border-purple-800/40 text-[11px] text-purple-300 flex items-start gap-2.5">
-          <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
-          <div className="leading-relaxed">
-            <span className="font-semibold text-white">Acceso Individual Seguro:</span> Cada usuario ingresa con su propia cuenta de cliente. Únicamente el propietario posee privilegios de administración.
-          </div>
-        </div>
-
-        {/* Google Authentication Button (Available on both Login & Register) */}
-        {mode !== 'RECOVERY' && (
-          <div className="mb-5">
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={handleOpenGoogleModal}
-              className="w-full py-2.5 px-4 rounded-xl border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-3 transition-colors cursor-pointer disabled:opacity-50 shadow-sm hover:border-zinc-500"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>{mode === 'LOGIN' ? 'CONTINUAR CON GOOGLE' : 'REGISTRARSE CON GOOGLE'}</span>
-            </button>
-
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-zinc-800" />
-              </div>
-              <div className="relative flex justify-center text-[10px] uppercase">
-                <span className="bg-[#12121B] px-2 text-zinc-500 font-semibold">
-                  O con correo y contraseña
-                </span>
-              </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+          className="w-full max-w-md bg-[#12121B] border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 z-10 relative"
+        >
+          <div className="text-center pb-6 border-b border-zinc-800/80">
+            <div className="inline-flex justify-center mb-3">
+              <StreamBoxLogo size="lg" showSlogan={false} />
             </div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">
+              {mode === 'LOGIN' && 'Acceso a StreamBox'}
+              {mode === 'REGISTER' && 'Crear Nueva Cuenta'}
+              {mode === 'RECOVERY' && 'Recuperar Contraseña'}
+            </h2>
+            <p className="text-xs text-zinc-400 mt-1.5">
+              {mode === 'LOGIN' && 'Ingresa con tu correo personal para acceder a tus pedidos y catálogo'}
+              {mode === 'REGISTER' && 'Regístrate con tu correo para comprar suscripciones y licencias'}
+              {mode === 'RECOVERY' && 'Ingresa tu correo para recibir instrucciones de restablecimiento'}
+            </p>
           </div>
-        )}
 
-        {/* Main Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'REGISTER' && (
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Nombre Completo
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Pepito Pérez"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-              Correo Electrónico
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
-              <input
-                type="email"
-                required
-                placeholder="ejemplo: pepitoperez@gmail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
-              />
+          {/* Security / Architecture Badge */}
+          <div className="mt-4 mb-5 p-3 rounded-xl bg-purple-950/40 border border-purple-800/40 text-[11px] text-purple-300 flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <span className="font-semibold text-white">Acceso Individual Seguro:</span> Cada usuario ingresa con su propia cuenta personal de cliente.
             </div>
           </div>
 
-          {mode === 'REGISTER' && (
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Teléfono Celular (Colombia)
-              </label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
-                <input
-                  type="tel"
-                  placeholder="Ej: 300 123 4567"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
-                />
-              </div>
-            </div>
-          )}
-
+          {/* Google Sign-in Button */}
           {mode !== 'RECOVERY' && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-zinc-300">
-                  Contraseña
+            <div className="mb-5">
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={handleGoogleSignInClick}
+                className="w-full py-2.5 px-4 rounded-xl border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-3 transition-colors cursor-pointer disabled:opacity-50 shadow-sm hover:border-zinc-500"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>{mode === 'LOGIN' ? 'CONTINUAR CON GOOGLE' : 'REGISTRARSE CON GOOGLE'}</span>
+              </button>
+
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-zinc-800" />
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase">
+                  <span className="bg-[#12121B] px-2 text-zinc-500 font-semibold">
+                    O con tu correo y contraseña
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'REGISTER' && (
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Nombre Completo
                 </label>
-                {mode === 'LOGIN' && (
+                <div className="relative">
+                  <User className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Tu nombre y apellido"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Correo Electrónico
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="email"
+                  required
+                  placeholder="ejemplo@correo.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            {mode === 'REGISTER' && (
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Teléfono Celular (Colombia)
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                  <input
+                    type="tel"
+                    placeholder="300 123 4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode !== 'RECOVERY' && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-zinc-300">
+                    Contraseña
+                  </label>
+                  {mode === 'LOGIN' && (
+                    <button
+                      type="button"
+                      onClick={() => setMode('RECOVERY')}
+                      className="text-[11px] text-purple-400 hover:underline cursor-pointer"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-10 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                  />
                   <button
                     type="button"
-                    onClick={() => setMode('RECOVERY')}
-                    className="text-[11px] text-purple-400 hover:underline cursor-pointer"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 cursor-pointer"
                   >
-                    ¿Olvidaste tu contraseña?
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
-                )}
+                </div>
               </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+            )}
+
+            {/* Remember Me */}
+            <div className="flex items-center justify-between pt-1 pb-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-300 hover:text-white">
                 <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-purple-600 focus:ring-purple-500/30 cursor-pointer accent-purple-600"
                 />
-              </div>
+                <span>Recordarme en este dispositivo</span>
+              </label>
+              {mode === 'LOGIN' && (
+                <span className="text-[10px] text-zinc-500">Sesión activa</span>
+              )}
             </div>
-          )}
 
-          {/* Recordarme Checkbox */}
-          <div className="flex items-center justify-between pt-1 pb-1">
-            <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-300 hover:text-white">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-purple-600 focus:ring-purple-500/30 cursor-pointer accent-purple-600"
+            {/* Cloudflare Turnstile Automatic Verification */}
+            <div className="pt-1 pb-1">
+              <CaptchaVerification
+                isVerified={isCaptchaVerified}
+                onVerify={(valid) => {
+                  setIsCaptchaVerified(valid);
+                  if (valid) setError(null);
+                }}
               />
-              <span>Recordarme en este dispositivo</span>
-            </label>
-            {mode === 'LOGIN' && (
-              <span className="text-[10px] text-zinc-500">Sesión persistente</span>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                <span>{error}</span>
+              </div>
             )}
-          </div>
 
-          {/* Interactive CAPTCHA: Validar si es humano */}
-          <div className="pt-1 pb-1">
-            <CaptchaVerification
-              isVerified={isCaptchaVerified}
-              onVerify={(valid) => {
-                setIsCaptchaVerified(valid);
-                if (valid) setError(null);
-              }}
-            />
-          </div>
+            {success && (
+              <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-300 flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{success}</span>
+              </div>
+            )}
 
-          {error && (
-            <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-start gap-2">
-              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
-              <span>{error}</span>
-            </div>
-          )}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:opacity-95 shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 mt-2 active:scale-98"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Verificando...</span>
+                </>
+              ) : mode === 'LOGIN' ? (
+                <>
+                  <span>INICIAR SESIÓN</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              ) : mode === 'REGISTER' ? (
+                <>
+                  <span>CONTINUAR CON EL REGISTRO</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              ) : (
+                <span>ENVIAR ENLACE</span>
+              )}
+            </button>
+          </form>
 
-          {success && (
-            <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-300 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span>{success}</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-2.5 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:opacity-95 shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Verificando credenciales...</span>
-              </>
-            ) : mode === 'LOGIN' ? (
-              <>
-                <span>INICIAR SESIÓN</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            ) : mode === 'REGISTER' ? (
-              <span>CREAR CUENTA DE CLIENTE</span>
+          <div className="mt-6 text-center text-xs text-zinc-400 border-t border-zinc-800/80 pt-4">
+            {mode === 'LOGIN' ? (
+              <p>
+                ¿No tienes una cuenta de cliente?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('REGISTER');
+                    setError(null);
+                  }}
+                  className="text-cyan-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Regístrate aquí
+                </button>
+              </p>
             ) : (
-              <span>ENVIAR ENLACE</span>
+              <p>
+                ¿Ya tienes una cuenta?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('LOGIN');
+                    setError(null);
+                  }}
+                  className="text-purple-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Inicia sesión
+                </button>
+              </p>
             )}
-          </button>
-        </form>
+          </div>
+        </motion.div>
+      )}
 
-        <div className="mt-6 text-center text-xs text-zinc-400 border-t border-zinc-800/80 pt-4">
-          {mode === 'LOGIN' ? (
-            <p>
-              ¿No tienes una cuenta de cliente?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('REGISTER');
-                  setError(null);
-                }}
-                className="text-cyan-400 font-semibold hover:underline cursor-pointer"
-              >
-                Regístrate aquí
-              </button>
-            </p>
-          ) : (
-            <p>
-              ¿Ya tienes una cuenta?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('LOGIN');
-                  setError(null);
-                }}
-                className="text-purple-400 font-semibold hover:underline cursor-pointer"
-              >
-                Inicia sesión
-              </button>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Google Account Selector Modal (Native Google OAuth UI) */}
-      {isGoogleModalOpen && (
+      {/* Google Prompt Modal for Custom Personal Account (NO accounts list) */}
+      {isGoogleCustomModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
-            onClick={() => setIsGoogleModalOpen(false)}
+            onClick={() => setIsGoogleCustomModalOpen(false)}
           />
 
-          <div className="relative w-full max-w-md bg-[#181824] border border-zinc-700/80 rounded-2xl shadow-2xl p-6 z-10 overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
-            {/* Close Button */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-full max-w-sm bg-[#161622] border border-zinc-700/80 rounded-2xl shadow-2xl p-6 z-10 overflow-hidden text-left"
+          >
             <button
-              onClick={() => setIsGoogleModalOpen(false)}
+              onClick={() => setIsGoogleCustomModalOpen(false)}
               className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
-            {/* Google Header */}
-            <div className="text-center pb-5 border-b border-zinc-800">
-              <div className="w-10 h-10 rounded-full bg-white shadow-md mx-auto mb-3 flex items-center justify-center">
-                <svg className="w-6 h-6" viewBox="0 0 24 24">
+            <div className="text-center pb-4 border-b border-zinc-800">
+              <div className="w-10 h-10 rounded-full bg-white shadow-md mx-auto mb-2 flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -472,147 +528,48 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-white">Acceder con Google</h3>
+              <h3 className="text-base font-bold text-white">Acceso con Google</h3>
               <p className="text-xs text-zinc-400 mt-1">
-                Elige una cuenta para identificarte en <span className="text-cyan-300 font-semibold">StreamBox Colombia</span>
+                Ingresa con tu correo personal de Google:
               </p>
             </div>
 
-            {/* List of Accounts */}
-            <div className="py-4 space-y-2">
-              {/* Account 1: Pepito Pérez (Standard Client - Requested by User) */}
+            <form onSubmit={handleCustomGoogleSubmit} className="space-y-3 pt-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  Tu Nombre
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Pepito Pérez"
+                  value={customGoogleName}
+                  onChange={(e) => setCustomGoogleName(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  Tu Correo Google
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="ejemplo@gmail.com"
+                  value={customGoogleEmail}
+                  onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
               <button
-                type="button"
-                onClick={() => handleSelectGoogleAccount('pepitoperez@gmail.com', 'Pepito Pérez')}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/90 border border-zinc-800 hover:border-cyan-500/50 transition-all text-left cursor-pointer group"
+                type="submit"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 hover:opacity-95 text-white text-xs font-bold transition-all cursor-pointer shadow-md mt-2"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                    P
-                  </div>
-                  <div>
-                    <div className="font-semibold text-white text-sm flex items-center gap-2">
-                      <span>Pepito Pérez</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-950/80 text-cyan-300 border border-cyan-800/50">
-                        Cliente
-                      </span>
-                    </div>
-                    <div className="text-xs text-zinc-400">pepitoperez@gmail.com</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors" />
+                INGRESAR CON ESTE CORREO
               </button>
-
-              {/* Account 2: Carlos Mendoza (Existing Client Demo) */}
-              <button
-                type="button"
-                onClick={() => handleSelectGoogleAccount('carlos.cliente@gmail.com', 'Carlos Mendoza')}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/90 border border-zinc-800 hover:border-purple-500/50 transition-all text-left cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                    C
-                  </div>
-                  <div>
-                    <div className="font-semibold text-white text-sm flex items-center gap-2">
-                      <span>Carlos Mendoza</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/50">
-                        Cliente
-                      </span>
-                    </div>
-                    <div className="text-xs text-zinc-400">carlos.cliente@gmail.com</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-purple-400 transition-colors" />
-              </button>
-
-              {/* Account 3: D.S. Galindo (Super Admin / Owner) */}
-              <button
-                type="button"
-                onClick={() => handleSelectGoogleAccount('d.s.gal.mor.9@gmail.com', 'D.S. Galindo')}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 border border-purple-800/50 hover:border-purple-500 transition-all text-left cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                    D
-                  </div>
-                  <div>
-                    <div className="font-semibold text-white text-sm flex items-center gap-2">
-                      <span>D.S. Galindo</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-900/80 text-purple-200 border border-purple-700/50">
-                        Super Admin
-                      </span>
-                    </div>
-                    <div className="text-xs text-purple-300">d.s.gal.mor.9@gmail.com</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-purple-400 group-hover:text-white transition-colors" />
-              </button>
-            </div>
-
-            {/* Custom Account Form (Enter any Google Email) */}
-            <div className="pt-3 border-t border-zinc-800/80">
-              {!showCustomGoogleInput ? (
-                <button
-                  type="button"
-                  onClick={() => setShowCustomGoogleInput(true)}
-                  className="w-full py-2.5 px-3 rounded-xl border border-dashed border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 hover:bg-zinc-900 text-zinc-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <UserPlus className="w-4 h-4 text-cyan-400" />
-                  <span>Ingresar con otra cuenta de Google...</span>
-                </button>
-              ) : (
-                <form onSubmit={handleCustomGoogleSubmit} className="space-y-3 bg-zinc-900/70 p-3.5 rounded-xl border border-zinc-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                      Tu cuenta Google personalizada:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomGoogleInput(false)}
-                      className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="Tu Nombre (ej. Pepito Pérez)"
-                      value={customGoogleName}
-                      onChange={(e) => setCustomGoogleName(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  <div>
-                    <input
-                      type="email"
-                      required
-                      placeholder="ejemplo@gmail.com"
-                      value={customGoogleEmail}
-                      onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 hover:opacity-95 text-white text-xs font-bold transition-all cursor-pointer shadow-md"
-                  >
-                    CONTINUAR CON ESTE CORREO
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* Security Explanation Note */}
-            <div className="mt-4 p-2.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-[10px] text-zinc-400 leading-relaxed">
-              <span className="text-zinc-300 font-semibold">Nota de Control de Acceso:</span> Si ingresas con un correo personal (como <code className="text-cyan-300">pepitoperez@gmail.com</code>), accedes como <strong className="text-white">CLIENTE</strong> a la tienda virtual. Solo <code className="text-purple-300">d.s.gal.mor.9@gmail.com</code> tiene privilegios de Super Administrador.
-            </div>
-          </div>
+            </form>
+          </motion.div>
         </div>
       )}
     </div>
