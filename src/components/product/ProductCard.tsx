@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Product } from '../../types';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Zap, Check, ChevronRight, Clock, ShieldCheck, HelpCircle } from 'lucide-react';
+import { ShoppingBag, Zap, Check, ChevronRight, Clock, ShieldCheck, HelpCircle, Heart } from 'lucide-react';
 
 import { BrandLogo } from '../common/BrandLogo';
 import { useToast } from '../common/Toast';
@@ -17,12 +17,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onSelect,
   onInstantBuy,
 }) => {
-  const { addToCart } = useStore();
-  const { success } = useToast();
+  const { addToCart, toggleFavorite, isFavorite } = useStore();
+  const { success, info } = useToast();
   const [selectedModalityId, setSelectedModalityId] = useState(
     product.modalities[0]?.id || ''
   );
   const [addedAnim, setAddedAnim] = useState(false);
+  const isFav = isFavorite(product.id);
+
+  const handleToggleFavorite = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const added = toggleFavorite(product.id);
+    if (added) {
+      success(`${product.name} guardado en tus Favoritos ❤️`);
+    } else {
+      info(`${product.name} eliminado de tus Favoritos`);
+    }
+  };
 
   const selectedModality =
     product.modalities.find((m) => m.id === selectedModalityId) ||
@@ -91,6 +102,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 Destacado
               </span>
             )}
+            <button
+              type="button"
+              onClick={handleToggleFavorite}
+              title={isFav ? "Remover de favoritos" : "Guardar en favoritos"}
+              aria-label={isFav ? "Remover de favoritos" : "Guardar en favoritos"}
+              className="p-1.5 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-sm transition-all ml-1 cursor-pointer active:scale-95"
+            >
+              <Heart className={`w-3.5 h-3.5 transition-colors ${isFav ? 'fill-rose-500 text-rose-500' : 'text-zinc-400 hover:text-rose-400'}`} />
+            </button>
           </div>
         </div>
 

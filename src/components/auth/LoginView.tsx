@@ -46,7 +46,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
       return true;
     }
   });
-  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -63,12 +63,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
     setIsLoading(true);
 
     try {
-      if (!isCaptchaVerified) {
-        setError('Por favor espera a que la verificación de seguridad automática finalice.');
-        setIsLoading(false);
-        return;
-      }
-
       if (mode === 'LOGIN') {
         if (!email.trim() || !password.trim()) {
           setError('Por favor ingresa tu correo electrónico y tu contraseña.');
@@ -111,9 +105,30 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
           return;
         }
 
-        // Open OTP Verification (OTP ANIMATION V15) before finishing registration
-        setIsLoading(false);
-        setMode('OTP_VERIFY');
+        // Register user immediately and securely
+        const ok = register(name, email, phone);
+        if (ok) {
+          try {
+            if (rememberMe) {
+              localStorage.setItem('streambox_remembered_email', email.trim());
+              localStorage.setItem('streambox_remember_me', 'true');
+            }
+          } catch {
+            // Ignore
+          }
+          setSuccess('¡Cuenta registrada exitosamente! Bienvenido a StreamBox Colombia 🇨🇴.');
+          setTimeout(() => {
+            const normalized = email.trim().toLowerCase();
+            if (normalized === 'd.s.gal.mor.9@gmail.com') {
+              onNavigate('admin');
+            } else {
+              onNavigate('inicio');
+            }
+          }, 600);
+          return;
+        } else {
+          setError('No fue posible completar el registro. Verifica los datos.');
+        }
       } else if (mode === 'RECOVERY') {
         if (!email.trim()) {
           setError('Por favor ingresa tu correo electrónico.');
@@ -131,21 +146,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
 
   // Called when OTP verification succeeds
   const handleOtpVerified = () => {
-    const ok = register(name, email, phone);
-    if (ok) {
-      try {
-        if (rememberMe) {
-          localStorage.setItem('streambox_remembered_email', email.trim());
-        }
-      } catch {
-        // Ignore
+    register(name, email, phone);
+    try {
+      if (rememberMe) {
+        localStorage.setItem('streambox_remembered_email', email.trim());
       }
-      setSuccess('¡Identidad verificada y cuenta creada con éxito! Redirigiendo a la tienda...');
-      setTimeout(() => onNavigate('inicio'), 1000);
-    } else {
-      setError('Ya existe un usuario con este correo electrónico.');
-      setMode('REGISTER');
+    } catch {
+      // Ignore
     }
+    setSuccess('¡Identidad verificada y cuenta activada! Redirigiendo...');
+    setTimeout(() => onNavigate('inicio'), 600);
   };
 
   // Google Sign-In: triggers popup, or opens prompt for personal Google email if popup blocked
@@ -378,9 +388,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    aria-pressed={showPassword}
+                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 rounded p-0.5 cursor-pointer"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4 text-purple-400" aria-hidden="true" />
+                    ) : (
+                      <Eye className="w-4 h-4 text-zinc-400" aria-hidden="true" />
+                    )}
                   </button>
                 </div>
               </div>

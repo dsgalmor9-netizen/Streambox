@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { StreamBoxLogo } from '../common/StreamBoxLogo';
-import { X, Lock, Mail, User, Phone, CheckCircle, ShieldAlert } from 'lucide-react';
+import { X, Lock, Mail, User, Phone, CheckCircle, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,6 +16,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -173,12 +174,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <div className="relative">
                 <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-10 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  aria-pressed={showPassword}
+                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 rounded p-0.5 cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4 text-purple-400" aria-hidden="true" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-zinc-400" aria-hidden="true" />
+                  )}
+                </button>
               </div>
             </div>
           )}

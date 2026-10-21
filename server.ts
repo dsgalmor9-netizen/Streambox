@@ -392,6 +392,135 @@ app.post('/api/admin/set-claim', (req, res) => {
   });
 });
 
+// 5. Server-Side Promo Code & Coupon Validation
+interface ServerCoupon {
+  code: string;
+  type: 'PERCENTAGE' | 'FIXED_COP';
+  value: number;
+  minPurchaseCOP: number;
+  active: boolean;
+  validUntil: string;
+  description: string;
+}
+
+const SERVER_PROMOTIONS: ServerCoupon[] = [
+  {
+    code: 'STREAMBOX10',
+    type: 'PERCENTAGE',
+    value: 10,
+    minPurchaseCOP: 20000,
+    active: true,
+    validUntil: '2026-12-31',
+    description: '10% de descuento en órdenes superiores a $20.000 COP',
+  },
+  {
+    code: 'BIENVENIDO5K',
+    type: 'FIXED_COP',
+    value: 5000,
+    minPurchaseCOP: 25000,
+    active: true,
+    validUntil: '2026-12-31',
+    description: '$5.000 COP de descuento de bienvenida en compras desde $25.000 COP',
+  },
+  {
+    code: 'SUPERVIP',
+    type: 'PERCENTAGE',
+    value: 15,
+    minPurchaseCOP: 50000,
+    active: true,
+    validUntil: '2026-12-31',
+    description: '15% de descuento especial clientes VIP desde $50.000 COP',
+  },
+  {
+    code: 'PROMOVIP',
+    type: 'FIXED_COP',
+    value: 10000,
+    minPurchaseCOP: 60000,
+    active: true,
+    validUntil: '2026-12-31',
+    description: '$10.000 COP de descuento en compras mayores a $60.000 COP',
+  },
+  {
+    code: 'COLOMBIA2026',
+    type: 'PERCENTAGE',
+    value: 12,
+    minPurchaseCOP: 30000,
+    active: true,
+    validUntil: '2026-12-31',
+    description: '12% de descuento especial Colombia',
+  },
+];
+
+app.post('/api/coupons/validate', (req, res) => {
+  try {
+    const { code, subtotalCOP } = req.body;
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ valid: false, message: 'Ingresa un código de cupón válido.' });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const subtotal = Number(subtotalCOP) || 0;
+
+    const coupon = SERVER_PROMOTIONS.find(
+      (c) => c.code.toUpperCase() === cleanCode && c.active
+    );
+
+    if (!coupon) {
+      return res.status(404).json({
+        valid: false,
+        message: 'Código de cupón no existe o ha expirado.',
+      });
+    }
+
+    // Check expiration date
+    const now = new Date();
+    const expiry = new Date(coupon.validUntil);
+    if (now > expiry) {
+      return res.status(400).json({
+        valid: false,
+        message: 'Este cupón de descuento ya ha expirado.',
+      });
+    }
+
+    // Check minimum purchase amount
+    if (subtotal < coupon.minPurchaseCOP) {
+      return res.status(400).json({
+        valid: false,
+        message: `Este cupón requiere una compra mínima de $${coupon.minPurchaseCOP.toLocaleString('es-CO')} COP.`,
+        minPurchaseCOP: coupon.minPurchaseCOP,
+      });
+    }
+
+    // Calculate discount
+    const discountCOP =
+      coupon.type === 'PERCENTAGE'
+        ? Math.round((subtotal * coupon.value) / 100)
+        : Math.min(coupon.value, subtotal);
+
+    const finalTotalCOP = Math.max(0, subtotal - discountCOP);
+
+    return res.json({
+      valid: true,
+      message: `¡Cupón ${coupon.code} validado exitosamente en el servidor!`,
+      coupon: {
+        id: `promo-srv-${coupon.code.toLowerCase()}`,
+        code: coupon.code,
+        type: coupon.type,
+        value: coupon.value,
+        minPurchaseCOP: coupon.minPurchaseCOP,
+        description: coupon.description,
+      },
+      calculation: {
+        subtotalCOP: subtotal,
+        discountCOP,
+        finalTotalCOP,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ valid: false, message: err?.message || 'Error validando cupón' });
+  }
+});
+
 // In-memory or synchronized database store for server-side queries
 let latestDatabaseCache: {
   updatedAt: string;

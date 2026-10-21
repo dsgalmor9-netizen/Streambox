@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product } from '../../types';
 import { useStore } from '../../context/StoreContext';
 import { BrandLogo } from '../common/BrandLogo';
+import { useToast } from '../common/Toast';
 import {
   X,
   ShieldCheck,
@@ -16,6 +17,7 @@ import {
   AlertCircle,
   Sparkles,
   Info,
+  Heart,
 } from 'lucide-react';
 
 interface ProductDetailModalProps {
@@ -33,11 +35,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onNavigateToChat,
   onSelectRelatedProduct,
 }) => {
-  const { addToCart, products } = useStore();
+  const { addToCart, products, toggleFavorite, isFavorite, addToRecentlyViewed } = useStore();
+  const { success, info } = useToast();
   const [selectedModalityId, setSelectedModalityId] = useState(
     product?.modalities[0]?.id || ''
   );
   const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    if (product?.id) {
+      addToRecentlyViewed(product.id);
+    }
+  }, [product?.id]);
 
   if (!product) return null;
 
@@ -125,12 +134,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const added = toggleFavorite(product.id);
+                if (added) success(`${product.name} guardado en tus Favoritos ❤️`);
+                else info(`${product.name} eliminado de tus Favoritos`);
+              }}
+              title={isFavorite(product.id) ? "Remover de favoritos" : "Guardar en favoritos"}
+              aria-label={isFavorite(product.id) ? "Remover de favoritos" : "Guardar en favoritos"}
+              className="p-2 rounded-lg bg-zinc-900 border border-zinc-700/80 text-zinc-300 hover:text-white transition-all cursor-pointer active:scale-95"
+            >
+              <Heart className={`w-4 h-4 transition-colors ${isFavorite(product.id) ? 'fill-rose-500 text-rose-500' : 'text-zinc-400 hover:text-rose-400'}`} />
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}

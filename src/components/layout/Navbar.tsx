@@ -14,6 +14,8 @@ import {
   ChevronDown,
   Sliders,
   TrendingDown,
+  Heart,
+  Settings,
 } from 'lucide-react';
 import { DeveloperPriceAdjusterModal } from '../admin/DeveloperPriceAdjusterModal';
 
@@ -169,6 +171,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <User className="w-4 h-4 text-zinc-400" />
                       Mi Cuenta y Pedidos
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('cuenta-favoritos')}
+                      className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-zinc-800/80 hover:text-white flex items-center gap-2"
+                    >
+                      <Heart className="w-4 h-4 text-rose-400" />
+                      Mis Favoritos
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('cuenta-perfil')}
+                      className="w-full text-left px-3 py-2 text-zinc-300 hover:bg-zinc-800/80 hover:text-white flex items-center gap-2"
+                    >
+                      <Settings className="w-4 h-4 text-purple-400" />
+                      Mi Perfil & Preferencias
                     </button>
 
                     <button

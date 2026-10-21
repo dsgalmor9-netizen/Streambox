@@ -78,15 +78,22 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     ? Math.max(0, instantSubtotal - instantDiscount)
     : cartTotalCOP;
 
-  const handleApplyCoupon = (e?: React.FormEvent) => {
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+
+  const handleApplyCoupon = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!couponInput.trim()) return;
-    const res = applyPromoCode(couponInput.trim());
-    if (res.success) {
-      setCouponFeedback({ text: res.message, isError: false });
-      setCouponInput('');
-    } else {
-      setCouponFeedback({ text: res.message, isError: true });
+    if (!couponInput.trim() || isApplyingCoupon) return;
+    setIsApplyingCoupon(true);
+    try {
+      const res = await applyPromoCode(couponInput.trim());
+      if (res.success) {
+        setCouponFeedback({ text: res.message, isError: false });
+        setCouponInput('');
+      } else {
+        setCouponFeedback({ text: res.message, isError: true });
+      }
+    } finally {
+      setIsApplyingCoupon(false);
     }
   };
 

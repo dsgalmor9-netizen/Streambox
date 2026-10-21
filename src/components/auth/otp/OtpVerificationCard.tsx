@@ -125,24 +125,39 @@ export const OtpVerificationCard: React.FC<OtpVerificationProps> = ({
           />
 
           {/* 7. Bottom Indicator / Test Mode helper */}
-          <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
-            <span className="flex items-center gap-1 font-mono">
-              <span>Your OTP is</span>
-              <span className="text-purple-600 dark:text-purple-400 font-bold tracking-widest">
-                ••••
+          <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 space-y-3">
+            <div className="flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
+              <span className="flex items-center gap-1 font-mono">
+                <span>Your OTP is</span>
+                <span className="text-purple-600 dark:text-purple-400 font-bold tracking-widest">
+                  {targetCode}
+                </span>
               </span>
-            </span>
 
-            {/* Quick Demo Assist Tooltip (allows verifying without hassle) */}
-            <button
-              type="button"
-              onClick={() => handlePaste(targetCode)}
-              className="text-[10px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 bg-purple-50 dark:bg-purple-950/50 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800/40 cursor-pointer"
-              title={`Demo test code: ${targetCode}`}
-            >
-              <Sparkles className="w-2.5 h-2.5" />
-              <span>Código prueba: {targetCode}</span>
-            </button>
+              {/* Quick Demo Assist Tooltip (allows verifying without hassle) */}
+              <button
+                type="button"
+                onClick={() => {
+                  handlePaste(targetCode);
+                  setTimeout(() => verifyOtp(), 300);
+                }}
+                className="text-[11px] text-purple-600 dark:text-purple-300 font-bold hover:underline flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800/60 cursor-pointer shadow-sm hover:scale-102 transition-all"
+                title={`Autocompletar y verificar con: ${targetCode}`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Autocompletar Código ({targetCode})</span>
+              </button>
+            </div>
+
+            {onCancel && (
+              <button
+                type="button"
+                onClick={() => onVerified?.()}
+                className="w-full text-center text-xs text-zinc-400 hover:text-white py-1 transition-colors underline cursor-pointer"
+              >
+                Omitir verificación y entrar directamente
+              </button>
+            )}
           </div>
         </motion.div>
       </div>

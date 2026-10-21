@@ -255,9 +255,15 @@ const AppContent: React.FC = () => {
                 ? 'reembolsos'
                 : currentView === 'cuenta-notificaciones'
                 ? 'notificaciones'
+                : currentView === 'cuenta-favoritos'
+                ? 'favoritos'
+                : currentView === 'cuenta-perfil'
+                ? 'perfil'
                 : 'pedidos'
             }
             onNavigate={handleNavigate}
+            onSelectProduct={(p) => setSelectedProductDetail(p)}
+            onInstantBuy={handleInstantBuy}
           />
         )}
 

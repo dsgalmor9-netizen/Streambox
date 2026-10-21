@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  Heart,
 } from 'lucide-react';
 
 interface CatalogViewProps {
@@ -22,10 +23,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   onSelectProduct,
   onInstantBuy,
 }) => {
-  const { products, categories } = useStore();
+  const { products, categories, favorites, recentlyViewed } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'VERIFIED_ONLY' | 'PENDING_ONLY'>('ALL');
   const [durationFilter, setDurationFilter] = useState<string>('ALL');
   const [maxPrice, setMaxPrice] = useState<number | ''>('');
@@ -73,12 +75,15 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         const matchesMaxPrice =
           maxPrice === '' || (lowestPrice !== Infinity && lowestPrice <= maxPrice);
 
+        const matchesFavorites = !onlyFavorites || favorites.includes(p.id);
+
         return (
           matchesCategory &&
           matchesQuery &&
           matchesStatus &&
           matchesDuration &&
           matchesMaxPrice &&
+          matchesFavorites &&
           p.status !== 'HIDDEN'
         );
       })
@@ -91,10 +96,18 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         if (sortBy === 'NAME') return a.name.localeCompare(b.name);
         return (b.isPopular ? 1 : 0) - (a.isPopular ? 1 : 0);
       });
-  }, [products, searchQuery, selectedCategory, statusFilter, durationFilter, maxPrice, sortBy]);
+  }, [products, searchQuery, selectedCategory, onlyFavorites, favorites, statusFilter, durationFilter, maxPrice, sortBy]);
+
+  const recentProducts = useMemo(() => {
+    return recentlyViewed
+      .map((id) => products.find((p) => p.id === id))
+      .filter((p): p is Product => Boolean(p))
+      .slice(0, 6);
+  }, [recentlyViewed, products]);
 
   const activeFiltersCount =
     (selectedCategory !== 'ALL' ? 1 : 0) +
+    (onlyFavorites ? 1 : 0) +
     (statusFilter !== 'ALL' ? 1 : 0) +
     (durationFilter !== 'ALL' ? 1 : 0) +
     (maxPrice !== '' ? 1 : 0) +
@@ -103,6 +116,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const resetAllFilters = () => {
     setSearchQuery('');
     setSelectedCategory('ALL');
+    setOnlyFavorites(false);
     setStatusFilter('ALL');
     setDurationFilter('ALL');
     setMaxPrice('');
@@ -268,6 +282,21 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
           >
             Todas las Categorías ({products.length})
           </button>
+
+          <button
+            onClick={() => setOnlyFavorites(!onlyFavorites)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
+              onlyFavorites
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Heart className={`w-3.5 h-3.5 ${onlyFavorites ? 'fill-white text-white' : 'text-rose-400'}`} />
+            <span>Mis Favoritos</span>
+            <span className={`text-[10px] font-mono px-1 rounded ${onlyFavorites ? 'bg-rose-800 text-rose-200' : 'bg-zinc-800 text-zinc-500'}`}>
+              {favorites.length}
+            </span>
+          </button>
           
           {categories.map((cat) => {
             const isSelected = selectedCategory === cat.id;
@@ -317,6 +346,33 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
             />
           ))}
         </div>
+      )}
+
+      {/* Vistos Recientemente Section */}
+      {recentProducts.length > 0 && (
+        <section aria-label="Servicios vistos recientemente" className="pt-8 mt-12 border-t border-zinc-800/80 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-purple-400" />
+              <h2 className="text-sm font-bold text-white tracking-wide">Vistos Recientemente</h2>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 font-mono">
+                {recentProducts.length}
+              </span>
+            </div>
+            <span className="text-[11px] text-zinc-500">Historial local de navegación</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {recentProducts.slice(0, 3).map((product) => (
+              <ProductCard
+                key={`recent-${product.id}`}
+                product={product}
+                onSelect={onSelectProduct}
+                onInstantBuy={onInstantBuy}
+              />
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

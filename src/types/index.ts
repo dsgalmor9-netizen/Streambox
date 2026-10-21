@@ -1,6 +1,13 @@
 // Only SUPER_ADMIN (the platform owner) and standard users (CLIENTE)
 export type UserRole = 'SUPER_ADMIN' | 'CLIENTE';
 
+export interface UserPreferences {
+  emailNotifications?: boolean;
+  whatsappNotifications?: boolean;
+  promotionsAlerts?: boolean;
+  preferredPaymentMethod?: 'NEQUI' | 'DAVIPLATA';
+}
+
 export interface User {
   id: string;
   name: string;
@@ -12,6 +19,7 @@ export interface User {
   referralCode?: string;
   referredBy?: string;
   rewardPoints?: number;
+  preferences?: UserPreferences;
 }
 
 export type ProductStatus = 'ACTIVE' | 'OUT_OF_STOCK' | 'PRICE_PENDING' | 'HIDDEN' | 'DRAFT';

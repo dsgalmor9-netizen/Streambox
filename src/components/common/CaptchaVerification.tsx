@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, CheckCircle2, RotateCw } from 'lucide-react';
 
 interface CaptchaVerificationProps {
@@ -10,24 +10,25 @@ export const CaptchaVerification: React.FC<CaptchaVerificationProps> = ({
   onVerify,
   isVerified,
 }) => {
-  const [status, setStatus] = useState<'verifying' | 'verified'>('verifying');
+  const [status, setStatus] = useState<'verifying' | 'verified'>(isVerified ? 'verified' : 'verifying');
   const [dots, setDots] = useState('');
+  const onVerifyRef = useRef(onVerify);
+  onVerifyRef.current = onVerify;
 
-  // Automatic Cloudflare Turnstile simulation: verifies automatically in 1.1s
+  // Automatic Cloudflare Turnstile simulation: verifies automatically in 600ms without cancelling while typing
   useEffect(() => {
     if (isVerified) {
       setStatus('verified');
       return;
     }
 
-    setStatus('verifying');
     const timer = setTimeout(() => {
       setStatus('verified');
-      onVerify(true);
-    }, 1100);
+      onVerifyRef.current(true);
+    }, 600);
 
     return () => clearTimeout(timer);
-  }, [isVerified, onVerify]);
+  }, [isVerified]);
 
   // Subtle animated dots for the "Verificando..." text
   useEffect(() => {

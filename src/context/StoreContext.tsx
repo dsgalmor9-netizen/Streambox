@@ -16,6 +16,7 @@ import {
 } from '../lib/excelExport';
 import {
   User,
+  UserPreferences,
   Product,
   CartItem,
   Order,
@@ -57,6 +58,7 @@ export interface StoreContextType {
   logout: () => void;
   switchUserRole: (role: UserRole) => void;
   updateUserRole: (userId: string, newRole: UserRole) => void;
+  updateUserProfile: (updates: { name?: string; phone?: string; preferences?: UserPreferences }) => void;
 
   // Catalog
   products: Product[];
@@ -77,6 +79,13 @@ export interface StoreContextType {
   exportProductsCSV: () => string;
   importProductsCSV: (csvContent: string) => { added: number; updated: number; drafts: number; errors: string[] };
 
+  // Customer Favorites & Recently Viewed
+  favorites: string[];
+  toggleFavorite: (productId: string) => boolean;
+  isFavorite: (productId: string) => boolean;
+  recentlyViewed: string[];
+  addToRecentlyViewed: (productId: string) => void;
+
   // Cart & Checkout
   cart: CartItem[];
   addToCart: (product: Product, modalityId: string, quantity?: number) => void;
@@ -84,7 +93,7 @@ export interface StoreContextType {
   updateCartQuantity: (productId: string, modalityId: string, quantity: number) => void;
   clearCart: () => void;
   appliedPromo: Promotion | null;
-  applyPromoCode: (code: string) => { success: boolean; message: string };
+  applyPromoCode: (code: string) => Promise<{ success: boolean; message: string }>;
   removePromoCode: () => void;
   cartSubtotalCOP: number;
   cartDiscountCOP: number;
@@ -365,6 +374,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    const saved = localStorage.getItem('sb_favorites');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [recentlyViewed, setRecentlyViewed] = useState<string[]>(() => {
+    const saved = localStorage.getItem('sb_recently_viewed');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [appliedPromo, setAppliedPromo] = useState<Promotion | null>(null);
 
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -470,6 +489,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem('sb_cart', JSON.stringify(cart));
   }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem('sb_favorites', JSON.stringify(favorites));
+  }, [favorites]);
+
+  useEffect(() => {
+    localStorage.setItem('sb_recently_viewed', JSON.stringify(recentlyViewed));
+  }, [recentlyViewed]);
 
   useEffect(() => {
     localStorage.setItem('sb_orders', JSON.stringify(orders));
@@ -833,17 +860,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const register = (name: string, email: string, phone?: string): boolean => {
     const normalized = email.trim().toLowerCase();
-    if (allUsers.some((u) => u.email.toLowerCase() === normalized)) {
-      return false;
+    if (!normalized) return false;
+
+    // Check if user already exists in local list
+    const existing = allUsers.find((u) => u.email.toLowerCase() === normalized);
+    if (existing) {
+      const updatedUser: User = {
+        ...existing,
+        name: name.trim() || existing.name,
+        phone: phone?.trim() || existing.phone,
+      };
+      setAllUsers((prev) => prev.map((u) => (u.id === existing.id ? updatedUser : u)));
+      setCurrentUser(updatedUser);
+      localStorage.setItem('sb_current_user', JSON.stringify(updatedUser));
+      logAuditAction('INICIO_SESION_EXISTENTE', 'Usuario', `Acceso de cliente existente: ${existing.email}`);
+      return true;
     }
 
     // Regla estricta: todo usuario nuevo registrado por la web es CLIENTE.
-    // El rol SUPER_ADMIN solo puede ser otorgado mediante Firebase Admin Custom Claims.
+    // Solo el correo oficial d.s.gal.mor.9@gmail.com recibe privilegios SUPER_ADMIN.
+    const isSuperAdminEmail = normalized === 'd.s.gal.mor.9@gmail.com';
+    const assignedRole: UserRole = isSuperAdminEmail ? 'SUPER_ADMIN' : 'CLIENTE';
+
     const newUser: User = {
       id: `usr-${Date.now()}`,
-      name: name.trim(),
+      name: name.trim() || normalized.split('@')[0],
       email: normalized,
-      role: 'CLIENTE',
+      role: assignedRole,
       phone: phone?.trim(),
       referralCode: `SB-REF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
       rewardPoints: 1000,
@@ -853,6 +896,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setAllUsers((prev) => [...prev, newUser]);
     setCurrentUser(newUser);
+    localStorage.setItem('sb_current_user', JSON.stringify(newUser));
     logAuditAction('REGISTRO_CLIENTE', 'Usuario', `Nuevo cliente registrado: ${newUser.email}`);
     return true;
   };
@@ -892,6 +936,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
     );
     logAuditAction('ACTUALIZACION_ROL', `Usuario ${userId}`, `Nuevo rol asignado: ${newRole}`);
+  };
+
+  const updateUserProfile = (updates: {
+    name?: string;
+    phone?: string;
+    preferences?: UserPreferences;
+  }) => {
+    if (!currentUser) return;
+    const updated: User = {
+      ...currentUser,
+      ...(updates.name ? { name: updates.name.trim() } : {}),
+      ...(updates.phone !== undefined ? { phone: updates.phone.trim() } : {}),
+      ...(updates.preferences
+        ? { preferences: { ...(currentUser.preferences || {}), ...updates.preferences } }
+        : {}),
+    };
+    setCurrentUser(updated);
+    setAllUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
+    localStorage.setItem('sb_current_user', JSON.stringify(updated));
+    logAuditAction('PERFIL_ACTUALIZADO', 'Usuario', `Perfil y preferencias actualizadas para ${currentUser.email}`);
   };
 
   // Product Catalog Operations (Protected with Custom Claim SUPER_ADMIN)
@@ -1199,6 +1263,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { updatedCount: res.updatedCount };
   };
 
+  // Customer Favorites & Recently Viewed
+  const toggleFavorite = (productId: string): boolean => {
+    let isNowFav = false;
+    setFavorites((prev) => {
+      if (prev.includes(productId)) {
+        isNowFav = false;
+        return prev.filter((id) => id !== productId);
+      } else {
+        isNowFav = true;
+        return [...prev, productId];
+      }
+    });
+    return isNowFav;
+  };
+
+  const isFavorite = (productId: string): boolean => {
+    return favorites.includes(productId);
+  };
+
+  const addToRecentlyViewed = (productId: string) => {
+    setRecentlyViewed((prev) => {
+      const filtered = prev.filter((id) => id !== productId);
+      return [productId, ...filtered].slice(0, 12);
+    });
+  };
+
   // Cart Management: Guard against null or PRICE_PENDING items
   const addToCart = (product: Product, modalityId: string, quantity = 1) => {
     const modality = product.modalities.find((m) => m.id === modalityId);
@@ -1269,9 +1359,57 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const cartTotalCOP = Math.max(0, cartSubtotalCOP - cartDiscountCOP);
 
-  const applyPromoCode = (code: string): { success: boolean; message: string } => {
+  const applyPromoCode = async (code: string): Promise<{ success: boolean; message: string }> => {
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, message: 'Ingresa un código de cupón válido.' };
+    }
+
+    try {
+      // 1. Attempt secure server-side coupon verification
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: cleanCode,
+          subtotalCOP: cartSubtotalCOP,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.valid && data.coupon) {
+        setAppliedPromo({
+          id: data.coupon.id,
+          code: data.coupon.code,
+          type: data.coupon.type,
+          value: data.coupon.value,
+          minPurchaseCOP: data.coupon.minPurchaseCOP,
+          maxUses: 1000,
+          usedCount: 1,
+          active: true,
+          validUntil: '2026-12-31',
+          description: data.coupon.description,
+        });
+        logAuditAction('CUPON_VALIDADO_SERVIDOR', 'Cupones', `Cupón ${cleanCode} validado por el servidor`);
+        return {
+          success: true,
+          message: data.message || `¡Cupón ${data.coupon.code} aplicado con éxito!`,
+        };
+      }
+
+      if (!res.ok) {
+        return {
+          success: false,
+          message: data.message || 'Código de descuento inválido o expirado.',
+        };
+      }
+    } catch (err) {
+      console.warn('[Cupones] Servidor no disponible, usando validación local:', err);
+    }
+
+    // 2. Local fallback validation if offline
     const promo = promotions.find(
-      (p) => p.code.toUpperCase() === code.trim().toUpperCase() && p.active
+      (p) => p.code.toUpperCase() === cleanCode && p.active
     );
 
     if (!promo) {
@@ -2395,6 +2533,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         logout,
         switchUserRole,
         updateUserRole,
+        updateUserProfile,
         products,
         categories,
         addProduct,
@@ -2406,6 +2545,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         resetCatalogPrices,
         exportProductsCSV,
         importProductsCSV,
+        favorites,
+        toggleFavorite,
+        isFavorite,
+        recentlyViewed,
+        addToRecentlyViewed,
         cart,
         addToCart,
         removeFromCart,

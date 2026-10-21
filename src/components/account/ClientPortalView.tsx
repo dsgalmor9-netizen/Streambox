@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Order, PaymentRequest, Ticket, RefundReason, RefundStatus, RefundRequest } from '../../types';
+import { Order, PaymentRequest, Ticket, RefundReason, RefundStatus, RefundRequest, Product } from '../../types';
 import {
   User,
   ShoppingBag,
@@ -28,21 +28,126 @@ import {
   Printer,
   Smartphone,
   PhoneCall,
+  Heart,
+  Settings,
+  CheckCircle2,
+  Lock,
 } from 'lucide-react';
 import { BrandLogo } from '../common/BrandLogo';
 import { InvoiceModal } from '../common/InvoiceModal';
+import { ProductCard } from '../product/ProductCard';
+import { useToast } from '../common/Toast';
 import { buildWhatsAppUrl, getCustomerSupportWhatsApp } from '../../lib/whatsapp';
 
 interface ClientPortalViewProps {
   initialTab?: string;
   onNavigate: (view: string) => void;
   onSelectOrderForChat?: (orderId: string) => void;
+  onSelectProduct?: (product: Product) => void;
+  onInstantBuy?: (product: Product, modalityId: string) => void;
 }
+
+// 4-Step Order Tracking Timeline Component
+const OrderTrackingTimeline: React.FC<{ order: Order }> = ({ order }) => {
+  let currentStep = 1;
+  if (order.orderStatus === 'ENTREGADO') {
+    currentStep = 4;
+  } else if (order.paymentStatus === 'PAGO_CONFIRMADO') {
+    currentStep = 3;
+  } else if (order.paymentStatus === 'PAGO_REPORTADO') {
+    currentStep = 2;
+  }
+
+  const steps = [
+    {
+      num: 1,
+      label: '1. Pedido Creado',
+      desc: 'Registrado en sistema',
+      date: new Date(order.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }),
+      done: true,
+      current: currentStep === 1,
+    },
+    {
+      num: 2,
+      label: '2. Pago Reportado',
+      desc: order.paymentStatus === 'PENDIENTE' ? 'Pendiente comprobante' : `${order.paymentMethod}`,
+      date: order.paymentStatus !== 'PENDIENTE' ? 'Reportado' : undefined,
+      done: currentStep >= 2,
+      current: currentStep === 2,
+    },
+    {
+      num: 3,
+      label: '3. Verificación Admin',
+      desc: order.paymentStatus === 'PAGO_CONFIRMADO' ? 'Super Admin aprobado' : 'Validando transferencia',
+      date: order.confirmedAt ? new Date(order.confirmedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : undefined,
+      done: currentStep >= 3,
+      current: currentStep === 3,
+    },
+    {
+      num: 4,
+      label: '4. Entregado',
+      desc: order.orderStatus === 'ENTREGADO' ? 'Credenciales entregadas' : 'En aprovisionamiento',
+      date: order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : undefined,
+      done: currentStep === 4,
+      current: currentStep === 4,
+    },
+  ];
+
+  return (
+    <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 my-3">
+      <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400 mb-2.5">
+        <div className="flex items-center gap-1.5 text-zinc-300">
+          <Clock className="w-3.5 h-3.5 text-purple-400" />
+          <span>Seguimiento de Estado del Pedido:</span>
+        </div>
+        <span className="font-mono text-[10px] text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/50">
+          Paso {currentStep} de 4
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {steps.map((st) => (
+          <div
+            key={st.num}
+            className={`p-2.5 rounded-lg border transition-all ${
+              st.done
+                ? 'bg-purple-950/30 border-purple-800/60 text-white'
+                : st.current
+                ? 'bg-cyan-950/30 border-cyan-500/70 text-cyan-200 ring-1 ring-cyan-500/30'
+                : 'bg-zinc-900/30 border-zinc-800/40 text-zinc-500'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  st.done
+                    ? 'bg-emerald-500 text-black'
+                    : st.current
+                    ? 'bg-cyan-400 text-black animate-pulse'
+                    : 'bg-zinc-800 text-zinc-500'
+                }`}
+              >
+                {st.done ? '✓' : st.num}
+              </span>
+              <span className="text-xs font-bold truncate">{st.label}</span>
+            </div>
+            <p className="text-[10px] text-zinc-400 leading-tight">{st.desc}</p>
+            {st.date && (
+              <span className="text-[9px] text-zinc-500 mt-1 block font-mono">{st.date}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   initialTab = 'pedidos',
   onNavigate,
   onSelectOrderForChat,
+  onSelectProduct,
+  onInstantBuy,
 }) => {
   const {
     currentUser,
@@ -58,7 +163,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     refundRequests,
     createRefundRequest,
     settings,
+    favorites,
+    products,
+    updateUserProfile,
+    toggleFavorite,
   } = useStore();
+
+  const { success: toastSuccess, info: toastInfo } = useToast();
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -101,6 +212,36 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const userNotifications = notifications.filter(
     (n) => currentUser ? n.userId === currentUser.id : true
   );
+
+  const userFavoriteProducts = products.filter((p) => favorites.includes(p.id));
+
+  // Profile and Preferences Form State
+  const [profileName, setProfileName] = useState(currentUser?.name || '');
+  const [profilePhone, setProfilePhone] = useState(currentUser?.phone || '');
+  const [prefWhatsapp, setPrefWhatsapp] = useState(currentUser?.preferences?.whatsappNotifications ?? true);
+  const [prefEmail, setPrefEmail] = useState(currentUser?.preferences?.emailNotifications ?? true);
+  const [prefPromos, setPrefPromos] = useState(currentUser?.preferences?.promotionsAlerts ?? true);
+  const [prefPayment, setPrefPayment] = useState<'NEQUI' | 'DAVIPLATA'>(currentUser?.preferences?.preferredPaymentMethod || 'NEQUI');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    updateUserProfile({
+      name: profileName,
+      phone: profilePhone,
+      preferences: {
+        whatsappNotifications: prefWhatsapp,
+        emailNotifications: prefEmail,
+        promotionsAlerts: prefPromos,
+        preferredPaymentMethod: prefPayment,
+      },
+    });
+    setTimeout(() => {
+      setIsSavingProfile(false);
+      toastSuccess('¡Tus datos y preferencias han sido actualizados exitosamente!');
+    }, 300);
+  };
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -255,6 +396,30 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('favoritos')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            activeTab === 'favoritos'
+              ? 'bg-rose-600 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          <Heart className={`w-4 h-4 ${activeTab === 'favoritos' ? 'fill-white' : 'text-rose-400'}`} />
+          <span>Mis Favoritos ({userFavoriteProducts.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('perfil')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            activeTab === 'perfil'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          <Settings className="w-4 h-4 text-purple-400" />
+          <span>Mi Perfil & Preferencias</span>
+        </button>
+
+        <button
           onClick={() => onNavigate('chat')}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/30 transition-colors ml-auto"
         >
@@ -327,6 +492,9 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {/* Interactive 4-Step Order Tracking Timeline */}
+                <OrderTrackingTimeline order={order} />
 
                 {/* Items */}
                 <div className="space-y-2">
@@ -1311,6 +1479,318 @@ Usa mi código de descuento: *${referralCode}* para recibir 10% OFF en tu primer
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* TAB CONTENT: FAVORITOS */}
+      {activeTab === 'favoritos' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Heart className="w-5 h-5 text-rose-500 fill-rose-500" />
+                <span>Mis Servicios Favoritos</span>
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Servicios y plataformas que has guardado para acceso rápido y compras recurrentes.
+              </p>
+            </div>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+              {userFavoriteProducts.length} guardados
+            </span>
+          </div>
+
+          {userFavoriteProducts.length === 0 ? (
+            <div className="p-12 text-center rounded-2xl bg-[#14141F] border border-zinc-800 text-zinc-400">
+              <Heart className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-white mb-1">Aún no tienes favoritos</h3>
+              <p className="text-xs text-zinc-500 mb-6 max-w-md mx-auto">
+                Haz clic en el corazón de cualquier servicio del catálogo para guardarlo aquí y comprarlo con un solo clic cuando lo necesites.
+              </p>
+              <button
+                onClick={() => onNavigate('catalogo')}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors cursor-pointer"
+              >
+                Explorar Todo el Catálogo
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {userFavoriteProducts.map((prod) => (
+                <ProductCard
+                  key={prod.id}
+                  product={prod}
+                  onSelect={onSelectProduct || (() => onNavigate('catalogo'))}
+                  onInstantBuy={onInstantBuy || (() => onNavigate('catalogo'))}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB CONTENT: PERFIL & PREFERENCIAS */}
+      {activeTab === 'perfil' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Settings className="w-5 h-5 text-purple-400" />
+                <span>Mi Perfil & Preferencias</span>
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Administra tus datos de contacto en Colombia, canales de entrega y preferencias de compra.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left 2 Cols: Profile & Notification Form */}
+            <div className="lg:col-span-2 space-y-6">
+              <form onSubmit={handleSaveProfile} className="p-6 rounded-2xl bg-[#14141F] border border-zinc-800 space-y-6">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider text-purple-300">
+                  Información Personal & Contacto
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                      Nombre Completo
+                    </label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      placeholder="Tu nombre completo"
+                      required
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                      Correo Electrónico (Principal)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        value={currentUser?.email || ''}
+                        disabled
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-zinc-400 cursor-not-allowed"
+                      />
+                      <span className="absolute right-3 top-2.5 text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Verificado
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                      Celular / WhatsApp (Colombia +57)
+                    </label>
+                    <div className="flex gap-2">
+                      <span className="px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-400 font-mono">
+                        +57
+                      </span>
+                      <input
+                        type="tel"
+                        value={profilePhone}
+                        onChange={(e) => setProfilePhone(e.target.value)}
+                        placeholder="Ej: 3045967068"
+                        maxLength={10}
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-1">
+                      Indispensable para entrega automática de credenciales de streaming y soporte por WhatsApp.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-zinc-800/80 pt-5 space-y-4">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider text-purple-300">
+                    Preferencias de Notificaciones & Pagos
+                  </h3>
+
+                  <div className="space-y-3">
+                    <label className="flex items-start gap-3 p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 cursor-pointer hover:border-zinc-700 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={prefWhatsapp}
+                        onChange={(e) => setPrefWhatsapp(e.target.checked)}
+                        className="mt-0.5 rounded border-zinc-700 text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-semibold text-white block">
+                          Alertas de Entrega y Renovación por WhatsApp
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          Recibe confirmación inmediata de pago y accesos por WhatsApp cuando tu pedido sea procesado.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 cursor-pointer hover:border-zinc-700 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={prefEmail}
+                        onChange={(e) => setPrefEmail(e.target.checked)}
+                        className="mt-0.5 rounded border-zinc-700 text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-semibold text-white block">
+                          Comprobantes y Facturas por Correo Electrónico
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          Envío automático de recibo digital PDF y registro de garantía Ley 1480.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 cursor-pointer hover:border-zinc-700 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={prefPromos}
+                        onChange={(e) => setPrefPromos(e.target.checked)}
+                        className="mt-0.5 rounded border-zinc-700 text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-semibold text-white block">
+                          Cupones y Promociones Exclusivas
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          Códigos de descuento para renovaciones anticipadas y lanzamientos de nuevas plataformas.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="pt-2">
+                    <label className="block text-xs font-semibold text-zinc-300 mb-2">
+                      Método de Pago Preferido:
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPrefPayment('NEQUI')}
+                        className={`p-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer ${
+                          prefPayment === 'NEQUI'
+                            ? 'bg-purple-950/80 border-purple-500 text-white shadow-sm'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />
+                        <span>Nequi (3045967068)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrefPayment('DAVIPLATA')}
+                        className={`p-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer ${
+                          prefPayment === 'DAVIPLATA'
+                            ? 'bg-purple-950/80 border-purple-500 text-white shadow-sm'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                        <span>Daviplata (3114139187)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={isSavingProfile}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-900/30 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingProfile ? 'Guardando...' : 'Guardar Datos y Preferencias'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Right Col: Loyalty Balance & Account Status */}
+            <div className="space-y-6">
+              {/* Loyalty Card */}
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-[#1C1635] via-[#141424] to-[#0F172A] border border-purple-900/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400">
+                    <Sparkles className="w-5 h-5" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Programa StreamBox Rewards</span>
+                  </div>
+                  <Gift className="w-5 h-5 text-purple-400" />
+                </div>
+
+                <div>
+                  <span className="text-xs text-zinc-400">Saldo de Puntos:</span>
+                  <div className="text-3xl font-extrabold font-mono text-white mt-1">
+                    {currentUser?.rewardPoints?.toLocaleString('es-CO') || '1.000'}{' '}
+                    <span className="text-amber-400 text-sm font-normal">pts</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Equivalente a ${(currentUser?.rewardPoints || 1000).toLocaleString('es-CO')} COP aplicable en cupones de renovación.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-1.5 text-xs">
+                  <span className="text-zinc-400 font-semibold block text-[11px]">Tu Código de Referidos:</span>
+                  <div className="flex items-center justify-between bg-zinc-900 px-3 py-2 rounded-lg font-mono text-amber-300 font-bold">
+                    <span>{currentUser?.referralCode || 'SB-REF-VIP'}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(currentUser?.referralCode || 'SB-REF-VIP', 'ref-code')}
+                      className="text-zinc-400 hover:text-white"
+                      title="Copiar código"
+                    >
+                      {copiedKey === 'ref-code' ? (
+                        <Check className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-500">
+                    Comparte este código con tus amigos. Ambos recibirán 1.000 puntos en su primera compra.
+                  </p>
+                </div>
+              </div>
+
+              {/* Security & Account State */}
+              <div className="p-5 rounded-2xl bg-[#14141F] border border-zinc-800 space-y-3 text-xs">
+                <div className="flex items-center gap-2 text-zinc-200 font-bold pb-2 border-b border-zinc-800">
+                  <Lock className="w-4 h-4 text-emerald-400" />
+                  <span>Seguridad de la Cuenta</span>
+                </div>
+
+                <div className="flex justify-between items-center text-zinc-400 py-1">
+                  <span>Rol en la plataforma:</span>
+                  <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-semibold text-[11px]">
+                    {currentUser?.role || 'CLIENTE'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-zinc-400 py-1">
+                  <span>Sesión segura:</span>
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Activa
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-zinc-400 py-1">
+                  <span>Registro:</span>
+                  <span className="font-mono text-zinc-300 text-[11px]">
+                    {currentUser?.createdAt
+                      ? new Date(currentUser.createdAt).toLocaleDateString('es-CO')
+                      : 'Octubre 2026'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

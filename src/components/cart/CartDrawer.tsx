@@ -33,17 +33,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const handleApplyPromo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!promoInput.trim()) return;
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
 
-    const res = applyPromoCode(promoInput);
-    setPromoMessage({ text: res.message, error: !res.success });
-    if (res.success) {
-      toastSuccess(res.message);
-      setPromoInput('');
-    } else {
-      toastError(res.message);
+  const handleApplyPromo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!promoInput.trim() || isApplyingPromo) return;
+
+    setIsApplyingPromo(true);
+    try {
+      const res = await applyPromoCode(promoInput);
+      setPromoMessage({ text: res.message, error: !res.success });
+      if (res.success) {
+        toastSuccess(res.message);
+        setPromoInput('');
+      } else {
+        toastError(res.message);
+      }
+    } finally {
+      setIsApplyingPromo(false);
     }
   };
 
