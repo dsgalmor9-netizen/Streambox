@@ -52,7 +52,7 @@ export interface StoreContextType {
   isAuthLoading: boolean;
   login: (email: string) => boolean;
   loginWithCredentials: (email: string, password?: string) => Promise<{ success: boolean; role: UserRole; error?: string }>;
-  loginWithGoogle: () => Promise<{ success: boolean; role: UserRole; error?: string }>;
+  loginWithGoogle: (customEmail?: string, customName?: string) => Promise<{ success: boolean; role: UserRole; error?: string }>;
   register: (name: string, email: string, phone?: string) => boolean;
   logout: () => void;
   switchUserRole: (role: UserRole) => void;
@@ -456,6 +456,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentUser]);
 
   useEffect(() => {
+    localStorage.setItem('sb_users', JSON.stringify(allUsers));
+  }, [allUsers]);
+
+  useEffect(() => {
     localStorage.setItem('sb_categories', JSON.stringify(categories));
   }, [categories]);
 
@@ -666,9 +670,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setCurrentUser(superAdminUser);
             return { success: true, role: 'SUPER_ADMIN' };
           }
-          const existingUser = allUsers.find((u) => u.email.toLowerCase() === normalized) || PRELOADED_USERS[1];
-          setCurrentUser(existingUser);
-          return { success: true, role: existingUser.role };
+          const existingUser = allUsers.find((u) => u.email.toLowerCase() === normalized);
+          if (existingUser) {
+            setCurrentUser(existingUser);
+            return { success: true, role: existingUser.role };
+          }
+          if (normalized === 'carlos.cliente@gmail.com') {
+            const clientUser = PRELOADED_USERS[1];
+            setCurrentUser(clientUser);
+            return { success: true, role: 'CLIENTE' };
+          }
+          const newClientUser: User = {
+            id: `usr-${Date.now()}`,
+            name: normalized.split('@')[0],
+            email: normalized,
+            role: 'CLIENTE',
+            referralCode: `SB-REF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+            rewardPoints: 1000,
+            createdAt: new Date().toISOString(),
+            active: true,
+          };
+          setAllUsers((prev) => [...prev, newClientUser]);
+          setCurrentUser(newClientUser);
+          return { success: true, role: 'CLIENTE' };
         }
 
         if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
@@ -714,20 +738,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  const loginWithGoogle = async (): Promise<{ success: boolean; role: UserRole; error?: string }> => {
-    // If Firebase is in development/mock key mode, sign in user seamlessly without breaking the UI
-    if (!isFirebaseConfigured) {
-      const googleDevUser: User = {
-        id: 'usr-google-owner',
-        name: 'D.S. Galindo (Super Admin)',
-        email: 'd.s.gal.mor.9@gmail.com',
-        role: 'SUPER_ADMIN',
+  const loginWithGoogle = async (
+    customEmail?: string,
+    customName?: string
+  ): Promise<{ success: boolean; role: UserRole; error?: string }> => {
+    // 1. Explicit email passed from Google Account Chooser or user input
+    if (customEmail && customEmail.trim().length > 0) {
+      const normalized = customEmail.trim().toLowerCase();
+      // SECURITY MANDATE: Only d.s.gal.mor.9@gmail.com is granted SUPER_ADMIN.
+      // Every other email (e.g. pepitoperez@gmail.com) is strictly CLIENTE.
+      const isSuperAdmin = normalized === 'd.s.gal.mor.9@gmail.com';
+      const role: UserRole = isSuperAdmin ? 'SUPER_ADMIN' : 'CLIENTE';
+
+      const existingUser = allUsers.find((u) => u.email.toLowerCase() === normalized);
+      if (existingUser) {
+        const updated = { ...existingUser, role };
+        setCurrentUser(updated);
+        logAuditAction('INICIO_SESION_GOOGLE', 'Auth', `Inicio con Google: ${normalized} (${role})`);
+        return { success: true, role };
+      }
+
+      const displayName = customName?.trim() || normalized.split('@')[0];
+      const newGoogleUser: User = {
+        id: `usr-google-${Date.now()}`,
+        name: displayName,
+        email: normalized,
+        role,
+        referralCode: `SB-REF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+        rewardPoints: role === 'SUPER_ADMIN' ? 50000 : 1000,
         createdAt: new Date().toISOString(),
         active: true,
       };
-      setCurrentUser(googleDevUser);
-      logAuditAction('INICIO_SESION_GOOGLE', 'Auth', 'Inicio con Google (Super Admin)');
-      return { success: true, role: 'SUPER_ADMIN' };
+
+      setAllUsers((prev) => [...prev, newGoogleUser]);
+      setCurrentUser(newGoogleUser);
+      logAuditAction('REGISTRO_GOOGLE', 'Auth', `Registro con Google: ${normalized} (${role})`);
+      return { success: true, role };
     }
 
     try {
@@ -751,24 +797,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       logAuditAction('INICIO_SESION_GOOGLE', 'Auth', `Inicio con Google. Custom Claim: ${verifiedRole}`);
       return { success: true, role: verifiedRole };
     } catch (err: any) {
-      console.warn('[Google Auth Error caught]:', err);
-      // If API key is invalid in dev or origin not allowed by Firebase config
-      if (err?.code === 'auth/api-key-not-valid' || err?.message?.includes('api-key-not-valid') || err?.code === 'auth/unauthorized-domain') {
-        const googleDevUser: User = {
-          id: 'usr-google-owner',
-          name: 'D.S. Galindo (Super Admin)',
-          email: 'd.s.gal.mor.9@gmail.com',
-          role: 'SUPER_ADMIN',
-          createdAt: new Date().toISOString(),
-          active: true,
-        };
-        setCurrentUser(googleDevUser);
-        logAuditAction('INICIO_SESION_GOOGLE', 'Auth', 'Acceso seguro verificado (Super Admin)');
-        return { success: true, role: 'SUPER_ADMIN' };
-      }
-
-      return { success: false, role: 'CLIENTE', error: err?.message || 'Error al conectar con Google' };
+      console.warn('[Google Auth] Popup blocked or unconfigured domain:', err);
+      return { success: false, role: 'CLIENTE', error: 'POPUP_FALLBACK' };
     }
+
+    return { success: false, role: 'CLIENTE', error: 'POPUP_FALLBACK' };
   };
 
   const login = (email: string): boolean => {
@@ -776,15 +809,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const existing = allUsers.find((u) => u.email.toLowerCase() === normalized);
 
     if (existing) {
-      // Si el usuario existente no es SUPER_ADMIN, permitir ingreso directo de prueba
-      if (existing.role !== 'SUPER_ADMIN') {
-        setCurrentUser(existing);
-        logAuditAction('INICIO_SESION', 'Usuario', `Inicio de sesión: ${existing.email}`);
-        return true;
-      }
+      setCurrentUser(existing);
+      logAuditAction('INICIO_SESION', 'Usuario', `Inicio de sesión: ${existing.email}`);
+      return true;
     }
 
-    return false;
+    // Dynamic client creation (e.g. pepitoperez@gmail.com)
+    const newClient: User = {
+      id: `usr-${Date.now()}`,
+      name: normalized.split('@')[0],
+      email: normalized,
+      role: normalized === 'd.s.gal.mor.9@gmail.com' ? 'SUPER_ADMIN' : 'CLIENTE',
+      referralCode: `SB-REF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      rewardPoints: 1000,
+      createdAt: new Date().toISOString(),
+      active: true,
+    };
+    setAllUsers((prev) => [...prev, newClient]);
+    setCurrentUser(newClient);
+    logAuditAction('INICIO_SESION_NUEVO', 'Usuario', `Inicio nuevo cliente: ${newClient.email}`);
+    return true;
   };
 
   const register = (name: string, email: string, phone?: string): boolean => {
@@ -801,6 +845,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       email: normalized,
       role: 'CLIENTE',
       phone: phone?.trim(),
+      referralCode: `SB-REF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      rewardPoints: 1000,
       createdAt: new Date().toISOString(),
       active: true,
     };

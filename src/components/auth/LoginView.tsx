@@ -1,7 +1,21 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { StreamBoxLogo } from '../common/StreamBoxLogo';
-import { Mail, Lock, ShieldAlert, CheckCircle, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  ShieldAlert,
+  CheckCircle,
+  ArrowRight,
+  ShieldCheck,
+  Loader2,
+  X,
+  User,
+  ChevronRight,
+  UserPlus,
+  Sparkles,
+  Phone,
+} from 'lucide-react';
 import { CaptchaVerification } from '../common/CaptchaVerification';
 
 interface LoginViewProps {
@@ -33,6 +47,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Google Account Chooser Modal state
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
+  const [customGoogleName, setCustomGoogleName] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,14 +91,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
             // Ignore localStorage errors
           }
 
-          // REDIRECCIÓN AUTOMÁTICA SEGÚN ROL VERIFICADO POR CUSTOM CLAIMS
+          // Redirección según rol verificado
           if (res.role === 'SUPER_ADMIN') {
             onNavigate('admin');
           } else {
             onNavigate('inicio');
           }
         } else {
-          setError(res.error || 'Credenciales inválidas. Verifica tu correo y contraseña en Firebase.');
+          setError(res.error || 'Credenciales inválidas. Verifica tu correo y contraseña.');
         }
       } else if (mode === 'REGISTER') {
         if (!name.trim() || !email.trim()) {
@@ -95,10 +115,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
           } catch {
             // Ignore
           }
-          setSuccess('Cuenta creada con éxito. Redirigiendo a la tienda...');
+          setSuccess('¡Cuenta de cliente creada con éxito! Ingresando a la tienda...');
           setTimeout(() => onNavigate('inicio'), 1000);
         } else {
-          setError('Ya existe un usuario con este correo electrónico.');
+          setError('Ya existe un usuario con este correo electrónico. Por favor inicia sesión.');
         }
       } else if (mode === 'RECOVERY') {
         if (!email.trim()) {
@@ -106,7 +126,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
           setIsLoading(false);
           return;
         }
-        setSuccess('Si la cuenta existe en Firebase, hemos enviado un enlace de recuperación a tu correo.');
+        setSuccess('Si la cuenta existe, hemos enviado un enlace de recuperación a tu correo.');
       }
     } catch (err: any) {
       setError(err?.message || 'Error durante la autenticación.');
@@ -115,25 +135,44 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleOpenGoogleModal = () => {
+    setError(null);
+    setIsGoogleModalOpen(true);
+  };
+
+  const handleSelectGoogleAccount = async (targetEmail: string, targetName?: string) => {
+    if (!targetEmail.trim()) {
+      setError('Por favor ingresa un correo electrónico de Google válido.');
+      return;
+    }
     setError(null);
     setIsLoading(true);
+    setIsGoogleModalOpen(false);
+
     try {
-      const res = await loginWithGoogle();
+      const res = await loginWithGoogle(targetEmail, targetName);
       if (res.success) {
+        // Redirección estricta: Únicamente d.s.gal.mor.9@gmail.com va al panel de administración.
+        // Cualquier otro usuario (como pepitoperez@gmail.com) ingresa a la tienda como CLIENTE.
         if (res.role === 'SUPER_ADMIN') {
           onNavigate('admin');
         } else {
           onNavigate('inicio');
         }
       } else {
-        setError(res.error || 'No fue posible iniciar sesión con Google.');
+        setError(res.error || 'No fue posible iniciar sesión con la cuenta de Google seleccionada.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Error con Google Sign-In.');
+      setError(err?.message || 'Error al autenticar con Google.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCustomGoogleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customGoogleEmail.trim()) return;
+    handleSelectGoogleAccount(customGoogleEmail, customGoogleName);
   };
 
   return (
@@ -153,8 +192,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
             {mode === 'RECOVERY' && 'Recuperar Contraseña'}
           </h2>
           <p className="text-xs text-zinc-400 mt-1.5">
-            {mode === 'LOGIN' && 'Inicio de sesión único para clientes y administradores con Firebase Auth'}
-            {mode === 'REGISTER' && 'Crea tu cuenta de cliente para comprar suscripciones y licencias'}
+            {mode === 'LOGIN' && 'Inicio de sesión único para clientes y administradores'}
+            {mode === 'REGISTER' && 'Regístrate con tu correo para comprar suscripciones y licencias'}
             {mode === 'RECOVERY' && 'Ingresa tu correo para recibir instrucciones de restablecimiento'}
           </p>
         </div>
@@ -163,20 +202,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
         <div className="mt-4 mb-5 p-3 rounded-xl bg-purple-950/40 border border-purple-800/40 text-[11px] text-purple-300 flex items-start gap-2.5">
           <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
           <div className="leading-relaxed">
-            <span className="font-semibold text-white">Autenticación Segura con Custom Claims:</span> Los administradores son verificados mediante token inmutable de Firebase Admin. Redirección automática a <code className="bg-purple-900/60 px-1 py-0.5 rounded text-cyan-300">/admin</code>.
+            <span className="font-semibold text-white">Acceso Individual Seguro:</span> Cada usuario ingresa con su propia cuenta de cliente. Únicamente el propietario posee privilegios de administración.
           </div>
         </div>
 
-        {/* Google Authentication Button */}
-        {mode === 'LOGIN' && (
+        {/* Google Authentication Button (Available on both Login & Register) */}
+        {mode !== 'RECOVERY' && (
           <div className="mb-5">
             <button
               type="button"
               disabled={isLoading}
-              onClick={handleGoogleSignIn}
-              className="w-full py-2.5 px-4 rounded-xl border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-3 transition-colors cursor-pointer disabled:opacity-50"
+              onClick={handleOpenGoogleModal}
+              className="w-full py-2.5 px-4 rounded-xl border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-3 transition-colors cursor-pointer disabled:opacity-50 shadow-sm hover:border-zinc-500"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -194,7 +233,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>CONTINUAR CON GOOGLE</span>
+              <span>{mode === 'LOGIN' ? 'CONTINUAR CON GOOGLE' : 'REGISTRARSE CON GOOGLE'}</span>
             </button>
 
             <div className="relative my-4">
@@ -202,7 +241,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                 <div className="w-full border-t border-zinc-800" />
               </div>
               <div className="relative flex justify-center text-[10px] uppercase">
-                <span className="bg-[#12121B] px-2 text-zinc-500 font-semibold">O con correo y contraseña</span>
+                <span className="bg-[#12121B] px-2 text-zinc-500 font-semibold">
+                  O con correo y contraseña
+                </span>
               </div>
             </div>
           </div>
@@ -215,14 +256,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                 Nombre Completo
               </label>
-              <input
-                type="text"
-                required
-                placeholder="Tu nombre y apellido"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
-              />
+              <div className="relative">
+                <User className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Pepito Pérez"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
             </div>
           )}
 
@@ -235,7 +279,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
               <input
                 type="email"
                 required
-                placeholder="ejemplo@correo.com"
+                placeholder="ejemplo: pepitoperez@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
@@ -248,13 +292,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                 Teléfono Celular (Colombia)
               </label>
-              <input
-                type="tel"
-                placeholder="300 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
-              />
+              <div className="relative">
+                <Phone className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="tel"
+                  placeholder="Ej: 300 123 4567"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
             </div>
           )}
 
@@ -345,7 +392,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                 <ArrowRight className="w-4 h-4" />
               </>
             ) : mode === 'REGISTER' ? (
-              <span>REGISTRARSE</span>
+              <span>CREAR CUENTA DE CLIENTE</span>
             ) : (
               <span>ENVIAR ENLACE</span>
             )}
@@ -384,6 +431,190 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
           )}
         </div>
       </div>
+
+      {/* Google Account Selector Modal (Native Google OAuth UI) */}
+      {isGoogleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsGoogleModalOpen(false)}
+          />
+
+          <div className="relative w-full max-w-md bg-[#181824] border border-zinc-700/80 rounded-2xl shadow-2xl p-6 z-10 overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+            {/* Close Button */}
+            <button
+              onClick={() => setIsGoogleModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Google Header */}
+            <div className="text-center pb-5 border-b border-zinc-800">
+              <div className="w-10 h-10 rounded-full bg-white shadow-md mx-auto mb-3 flex items-center justify-center">
+                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-white">Acceder con Google</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Elige una cuenta para identificarte en <span className="text-cyan-300 font-semibold">StreamBox Colombia</span>
+              </p>
+            </div>
+
+            {/* List of Accounts */}
+            <div className="py-4 space-y-2">
+              {/* Account 1: Pepito Pérez (Standard Client - Requested by User) */}
+              <button
+                type="button"
+                onClick={() => handleSelectGoogleAccount('pepitoperez@gmail.com', 'Pepito Pérez')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/90 border border-zinc-800 hover:border-cyan-500/50 transition-all text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                    P
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white text-sm flex items-center gap-2">
+                      <span>Pepito Pérez</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-950/80 text-cyan-300 border border-cyan-800/50">
+                        Cliente
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-400">pepitoperez@gmail.com</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors" />
+              </button>
+
+              {/* Account 2: Carlos Mendoza (Existing Client Demo) */}
+              <button
+                type="button"
+                onClick={() => handleSelectGoogleAccount('carlos.cliente@gmail.com', 'Carlos Mendoza')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/90 border border-zinc-800 hover:border-purple-500/50 transition-all text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                    C
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white text-sm flex items-center gap-2">
+                      <span>Carlos Mendoza</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/50">
+                        Cliente
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-400">carlos.cliente@gmail.com</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-purple-400 transition-colors" />
+              </button>
+
+              {/* Account 3: D.S. Galindo (Super Admin / Owner) */}
+              <button
+                type="button"
+                onClick={() => handleSelectGoogleAccount('d.s.gal.mor.9@gmail.com', 'D.S. Galindo')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 border border-purple-800/50 hover:border-purple-500 transition-all text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                    D
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white text-sm flex items-center gap-2">
+                      <span>D.S. Galindo</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-900/80 text-purple-200 border border-purple-700/50">
+                        Super Admin
+                      </span>
+                    </div>
+                    <div className="text-xs text-purple-300">d.s.gal.mor.9@gmail.com</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-purple-400 group-hover:text-white transition-colors" />
+              </button>
+            </div>
+
+            {/* Custom Account Form (Enter any Google Email) */}
+            <div className="pt-3 border-t border-zinc-800/80">
+              {!showCustomGoogleInput ? (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomGoogleInput(true)}
+                  className="w-full py-2.5 px-3 rounded-xl border border-dashed border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 hover:bg-zinc-900 text-zinc-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4 text-cyan-400" />
+                  <span>Ingresar con otra cuenta de Google...</span>
+                </button>
+              ) : (
+                <form onSubmit={handleCustomGoogleSubmit} className="space-y-3 bg-zinc-900/70 p-3.5 rounded-xl border border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      Tu cuenta Google personalizada:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomGoogleInput(false)}
+                      className="text-[11px] text-zinc-500 hover:text-zinc-300"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Tu Nombre (ej. Pepito Pérez)"
+                      value={customGoogleName}
+                      onChange={(e) => setCustomGoogleName(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <input
+                      type="email"
+                      required
+                      placeholder="ejemplo@gmail.com"
+                      value={customGoogleEmail}
+                      onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 hover:opacity-95 text-white text-xs font-bold transition-all cursor-pointer shadow-md"
+                  >
+                    CONTINUAR CON ESTE CORREO
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* Security Explanation Note */}
+            <div className="mt-4 p-2.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-[10px] text-zinc-400 leading-relaxed">
+              <span className="text-zinc-300 font-semibold">Nota de Control de Acceso:</span> Si ingresas con un correo personal (como <code className="text-cyan-300">pepitoperez@gmail.com</code>), accedes como <strong className="text-white">CLIENTE</strong> a la tienda virtual. Solo <code className="text-purple-300">d.s.gal.mor.9@gmail.com</code> tiene privilegios de Super Administrador.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

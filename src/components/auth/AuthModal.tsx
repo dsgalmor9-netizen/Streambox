@@ -105,25 +105,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <span>Acceso Rápido para Pruebas:</span>
               <span className="text-cyan-400 text-[10px]">1 clic</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('pepitoperez@gmail.com')}
+                className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-left font-medium transition-colors"
+              >
+                <div className="font-semibold text-white text-[11px] truncate">Pepito (Cliente)</div>
+                <div className="text-[9px] text-cyan-300 truncate">pepitoperez@...</div>
+              </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin('carlos.cliente@gmail.com')}
-                className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-left font-medium transition-colors"
+                className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-left font-medium transition-colors"
               >
-                <div className="font-semibold text-white">Carlos (Cliente)</div>
-                <div className="text-[10px] text-zinc-400 truncate">carlos.cliente@...</div>
+                <div className="font-semibold text-white text-[11px] truncate">Carlos (Cliente)</div>
+                <div className="text-[9px] text-zinc-400 truncate">carlos.cliente@...</div>
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin('d.s.gal.mor.9@gmail.com')}
-                className="px-2.5 py-1.5 rounded-lg bg-purple-950/80 hover:bg-purple-900/80 text-purple-200 border border-purple-800/50 text-left font-medium transition-colors"
+                className="px-2 py-1.5 rounded-lg bg-purple-950/80 hover:bg-purple-900/80 text-purple-200 border border-purple-800/50 text-left font-medium transition-colors"
               >
-                <div className="font-semibold text-white flex items-center gap-1">
+                <div className="font-semibold text-white text-[11px] truncate flex items-center gap-1">
                   <span>Admin Master</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
                 </div>
-                <div className="text-[10px] text-purple-300 truncate">d.s.gal.mor.9@...</div>
+                <div className="text-[9px] text-purple-300 truncate">d.s.gal.mor.9@...</div>
               </button>
             </div>
           </div>
