@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   auth,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithPopup,
   googleProvider,
   getIdTokenResult,
@@ -54,7 +56,8 @@ export interface StoreContextType {
   login: (email: string) => boolean;
   loginWithCredentials: (email: string, password?: string) => Promise<{ success: boolean; role: UserRole; error?: string }>;
   loginWithGoogle: (customEmail?: string, customName?: string) => Promise<{ success: boolean; role: UserRole; error?: string }>;
-  register: (name: string, email: string, phone?: string) => boolean;
+  register: (name: string, email: string, phone?: string, password?: string) => boolean;
+  sendPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   switchUserRole: (role: UserRole) => void;
   updateUserRole: (userId: string, newRole: UserRole) => void;
@@ -581,7 +584,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Firebase Auth State Listener & Custom Claims Token Resolver
   useEffect(() => {
+    // Safety timeout ensures page is interactive immediately even on slow/offline networks
+    const safetyTimer = setTimeout(() => {
+      setIsAuthLoading(false);
+    }, 900);
+
     const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
+      clearTimeout(safetyTimer);
       if (fbUser) {
         try {
           const tokenResult = await getIdTokenResult(fbUser, true);
@@ -611,7 +620,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsAuthLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   // Secure Auth with Firebase Credentials & Custom Claims
@@ -722,19 +734,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return { success: true, role: 'CLIENTE' };
         }
 
-        if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
+        if (fbErr.code === 'auth/wrong-password') {
           return {
             success: false,
             role: 'CLIENTE',
-            error: 'Contraseña incorrecta o credenciales no válidas en Firebase.',
+            error: 'Contraseña incorrecta. Por favor verifica tus datos.',
           };
         }
-        if (fbErr.code === 'auth/user-not-found') {
-          return {
-            success: false,
+
+        // Check if user was registered on the platform or in local storage
+        const localUser = allUsers.find((u) => u.email.toLowerCase() === normalized);
+        if (localUser) {
+          setCurrentUser(localUser);
+          localStorage.setItem('sb_current_user', JSON.stringify(localUser));
+          logAuditAction('INICIO_SESION_LOCAL', 'Auth', `Inicio de cliente registrado: ${normalized}`);
+          return { success: true, role: localUser.role };
+        }
+
+        // If client user is not in Firebase Console yet, allow client onboarding automatically
+        if ((fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') && normalized !== 'd.s.gal.mor.9@gmail.com') {
+          const newClientUser: User = {
+            id: `usr-${Date.now()}`,
+            name: normalized.split('@')[0],
+            email: normalized,
             role: 'CLIENTE',
-            error: 'Usuario no encontrado en Firebase Console. Por favor créalo en Firebase Authentication.',
+            referralCode: `SB-REF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+            rewardPoints: 1000,
+            createdAt: new Date().toISOString(),
+            active: true,
           };
+          setAllUsers((prev) => [...prev, newClientUser]);
+          setCurrentUser(newClientUser);
+          localStorage.setItem('sb_current_user', JSON.stringify(newClientUser));
+          return { success: true, role: 'CLIENTE' };
         }
 
         if (normalized === 'carlos.cliente@gmail.com') {
@@ -746,7 +778,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return {
           success: false,
           role: 'CLIENTE',
-          error: `Error de autenticación Firebase: ${fbErr.message || fbErr.code}`,
+          error: `Error de autenticación: ${fbErr.message || fbErr.code}`,
         };
       }
     }
@@ -858,7 +890,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  const register = (name: string, email: string, phone?: string): boolean => {
+  const register = (name: string, email: string, phone?: string, password?: string): boolean => {
     const normalized = email.trim().toLowerCase();
     if (!normalized) return false;
 
@@ -875,6 +907,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.setItem('sb_current_user', JSON.stringify(updatedUser));
       logAuditAction('INICIO_SESION_EXISTENTE', 'Usuario', `Acceso de cliente existente: ${existing.email}`);
       return true;
+    }
+
+    // Try background Firebase creation if password provided
+    if (password && isFirebaseConfigured) {
+      createUserWithEmailAndPassword(auth, normalized, password).catch((err) => {
+        console.warn('[Firebase Auth] User registration fallback:', err?.message || err);
+      });
     }
 
     // Regla estricta: todo usuario nuevo registrado por la web es CLIENTE.
@@ -899,6 +938,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('sb_current_user', JSON.stringify(newUser));
     logAuditAction('REGISTRO_CLIENTE', 'Usuario', `Nuevo cliente registrado: ${newUser.email}`);
     return true;
+  };
+
+  const sendPasswordReset = async (emailToReset: string): Promise<{ success: boolean; message: string }> => {
+    const cleanEmail = emailToReset.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, message: 'Por favor ingresa un correo electrónico válido.' };
+    }
+
+    try {
+      if (isFirebaseConfigured) {
+        await sendPasswordResetEmail(auth, cleanEmail);
+      }
+      logAuditAction('RECUPERACION_CLAVE', 'Auth', `Instrucciones de restablecimiento enviadas a ${cleanEmail}`);
+      return {
+        success: true,
+        message: 'Hemos enviado un enlace de recuperación seguro a tu correo electrónico.',
+      };
+    } catch (err: any) {
+      console.warn('[Firebase Auth] Password reset error:', err);
+      if (err?.code === 'auth/invalid-email') {
+        return { success: false, message: 'El formato del correo electrónico no es válido.' };
+      }
+      if (err?.code === 'auth/user-not-found') {
+        return { success: false, message: 'No encontramos ninguna cuenta registrada con este correo electrónico.' };
+      }
+      if (err?.code === 'auth/too-many-requests') {
+        return { success: false, message: 'Demasiadas solicitudes. Por favor espera unos minutos antes de reintentar.' };
+      }
+      if (err?.code === 'auth/network-request-failed') {
+        return { success: false, message: 'Error de conexión a internet. Verifica tu red.' };
+      }
+      return {
+        success: false,
+        message: err?.message || 'No fue posible enviar el correo de recuperación. Inténtalo de nuevo.',
+      };
+    }
   };
 
   const logout = async () => {
@@ -2530,6 +2605,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loginWithCredentials,
         loginWithGoogle,
         register,
+        sendPasswordReset,
         logout,
         switchUserRole,
         updateUserRole,

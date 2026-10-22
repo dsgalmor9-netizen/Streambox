@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithPopup,
   signOut,
   getIdTokenResult,
@@ -96,6 +98,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 export {
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithPopup,
   signOut,
   getIdTokenResult,
