@@ -54,6 +54,7 @@ import {
   getRenewalReminderWhatsApp,
   getOrderPaymentInstructionsWhatsApp,
 } from '../../lib/whatsapp';
+import { PremiumAnalyticsWidget } from './PremiumAnalyticsWidget';
 
 interface AdminPortalViewProps {
   initialSubTab?: string;
@@ -437,6 +438,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Premium Analytics Widget with Real-time D3 Line Chart */}
+          <PremiumAnalyticsWidget />
 
           {/* Quick Pending Payments Section */}
           <div className="p-6 rounded-2xl bg-[#14141F] border border-zinc-800">
@@ -1824,6 +1828,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <h2 className="text-base font-bold text-white">Estadísticas Comerciales y Rendimiento</h2>
             <p className="text-xs text-zinc-400 mt-0.5">Indicadores clave de ventas, métodos de pago y conversión en Colombia</p>
           </div>
+
+          {/* D3 Premium Real-Time Analytics Widget */}
+          <PremiumAnalyticsWidget />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800">

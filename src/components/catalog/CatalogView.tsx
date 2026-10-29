@@ -1,7 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
+import { useCurrency } from '../../context/CurrencyContext';
+import { useSearch } from '../../context/SearchContext';
 import { Product } from '../../types';
 import { ProductCard } from '../product/ProductCard';
+import { StoreControlBar } from '../common/StoreControlBar';
+import { ScrollReveal } from '../common/ScrollReveal';
 import {
   Search,
   Filter,
@@ -12,6 +16,7 @@ import {
   Clock,
   Sparkles,
   Heart,
+  Layers,
 } from 'lucide-react';
 
 interface CatalogViewProps {
@@ -24,9 +29,15 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   onInstantBuy,
 }) => {
   const { products, categories, favorites, recentlyViewed } = useStore();
+  const { currency, billingPeriod } = useCurrency();
+  const {
+    searchQuery,
+    setSearchQuery,
+    selectedCategory,
+    setSelectedCategory,
+    clearSearch,
+  } = useSearch();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'VERIFIED_ONLY' | 'PENDING_ONLY'>('ALL');
   const [durationFilter, setDurationFilter] = useState<string>('ALL');
@@ -114,8 +125,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     (searchQuery.trim() ? 1 : 0);
 
   const resetAllFilters = () => {
-    setSearchQuery('');
-    setSelectedCategory('ALL');
+    clearSearch();
     setOnlyFavorites(false);
     setStatusFilter('ALL');
     setDurationFilter('ALL');
@@ -124,39 +134,45 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 text-xs text-purple-400 font-mono mb-1">
-          <Sparkles className="w-4 h-4" />
-          <span>{categories.length} Categorías Oficiales · {products.length} Servicios Catalogados</span>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+      {/* Top Header & Store Control Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2 border-b border-white/8">
+        <div>
+          <div className="flex items-center gap-2 text-xs text-amber-400 font-medium uppercase tracking-wider mb-1">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{categories.length} Categorías Oficiales · {products.length} Servicios Activos</span>
+          </div>
+          <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+            Catálogo Cinematográfico
+          </h1>
+          <p className="text-xs sm:text-sm text-neutral-400 mt-1">
+            Cuentas completas y perfiles con entrega inmediata. Precios en {currency} {billingPeriod === 'ANNUAL' ? '(con -25% de descuento anual)' : ''}.
+          </p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-          Catálogo Completo StreamBox
-        </h1>
-        <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-          Streaming, música, IA, herramientas para creadores, ofimática y software con precios verificados en COP.
-        </p>
+
+        {/* Dynamic Currency & Periodicity Selector */}
+        <StoreControlBar className="w-full md:w-auto" />
       </div>
 
       {/* Main Search & Quick Controls Toolbar */}
-      <div className="p-4 rounded-2xl bg-[#14141F] border border-zinc-800 space-y-4">
+      <div className="p-4 rounded-2xl bg-[#0d0d14] border border-white/8 shadow-[0_4px_20px_rgba(0,0,0,0.5)] space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           
           {/* Search Box */}
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" />
+            <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3.5" />
             <input
               type="text"
-              placeholder="Buscar por marca o servicio (Netflix, Spotify, ChatGPT, Canva, NordVPN...)"
+              placeholder="Buscar por marca o servicio (Netflix, Spotify, ChatGPT, Max, Canva, Disney+...)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+              className="w-full bg-black/60 border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400/50 transition-colors"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-3 text-zinc-500 hover:text-white"
+                className="absolute right-3 top-3 text-neutral-500 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -166,33 +182,34 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
           {/* Quick Filters Toggle & Sort */}
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setShowFiltersPanel(!showFiltersPanel)}
-              className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
                 showFiltersPanel || activeFiltersCount > 0
-                  ? 'bg-purple-950/60 border-purple-500 text-purple-200'
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                  : 'bg-black/60 border-white/8 text-neutral-400 hover:text-white hover:border-white/15'
               }`}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
               <span>Filtros</span>
               {activeFiltersCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-purple-500 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-bold flex items-center justify-center font-mono">
                   {activeFiltersCount}
                 </span>
               )}
             </button>
 
-            <div className="flex items-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-              <ArrowUpDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <div className="flex items-center gap-1.5 bg-black/60 border border-white/8 rounded-xl px-3 py-1.5">
+              <ArrowUpDown className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
                 className="bg-transparent text-xs text-white focus:outline-none cursor-pointer"
               >
-                <option value="POPULAR" className="bg-zinc-900">Más Populares</option>
-                <option value="PRICE_ASC" className="bg-zinc-900">Precio: Menor a Mayor</option>
-                <option value="PRICE_DESC" className="bg-zinc-900">Precio: Mayor a Menor</option>
-                <option value="NAME" className="bg-zinc-900">Alfabético A-Z</option>
+                <option value="POPULAR" className="bg-[#0d0d14]">Más Populares</option>
+                <option value="PRICE_ASC" className="bg-[#0d0d14]">Precio: Menor a Mayor</option>
+                <option value="PRICE_DESC" className="bg-[#0d0d14]">Precio: Mayor a Menor</option>
+                <option value="NAME" className="bg-[#0d0d14]">Alfabético A-Z</option>
               </select>
             </div>
           </div>
@@ -200,16 +217,16 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
         {/* Expandable Filters Panel */}
         {showFiltersPanel && (
-          <div className="pt-4 border-t border-zinc-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="pt-4 border-t border-white/6 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             {/* Status Filter */}
             <div>
-              <label className="block text-zinc-400 font-semibold mb-1.5">
+              <label className="block text-neutral-400 font-semibold mb-1.5">
                 Estado Comercial:
               </label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-white focus:outline-none focus:border-purple-500"
+                className="w-full bg-black/60 border border-white/8 rounded-lg p-2 text-white focus:outline-none focus:border-amber-400/50"
               >
                 <option value="ALL">Todos los servicios ({products.length})</option>
                 <option value="VERIFIED_ONLY">Solo con Precio Verificado (Comprables)</option>
@@ -219,13 +236,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
             {/* Duration Filter */}
             <div>
-              <label className="block text-zinc-400 font-semibold mb-1.5">
+              <label className="block text-neutral-400 font-semibold mb-1.5">
                 Duración del Plan:
               </label>
               <select
                 value={durationFilter}
                 onChange={(e) => setDurationFilter(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-white focus:outline-none focus:border-purple-500"
+                className="w-full bg-black/60 border border-white/8 rounded-lg p-2 text-white focus:outline-none focus:border-amber-400/50"
               >
                 <option value="ALL">Cualquier duración</option>
                 <option value="15 Días">15 Días</option>
@@ -237,7 +254,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
             {/* Max Price Filter */}
             <div>
-              <label className="block text-zinc-400 font-semibold mb-1.5">
+              <label className="block text-neutral-400 font-semibold mb-1.5">
                 Precio Máximo (COP):
               </label>
               <div className="flex gap-2">
@@ -246,12 +263,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                   placeholder="Ej: 50000"
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-white font-mono"
+                  className="w-full bg-black/60 border border-white/8 rounded-lg p-2 text-white font-mono"
                 />
                 {activeFiltersCount > 0 && (
                   <button
+                    type="button"
                     onClick={resetAllFilters}
-                    className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] shrink-0"
+                    className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-neutral-300 text-[11px] shrink-0 transition-colors"
                   >
                     Limpiar
                   </button>
@@ -262,38 +280,40 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         )}
       </div>
 
-      {/* 17 Categories Visual Selector */}
+      {/* Category Pills & Filters */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
+        <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
           <span className="font-semibold uppercase tracking-wider text-[11px]">
-            Explorar por Categoría ({categories.length}):
+            Categorías ({categories.length}):
           </span>
-          <span className="text-zinc-500">{filteredProducts.length} servicios encontrados</span>
+          <span className="text-neutral-500 font-mono">{filteredProducts.length} servicios</span>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2">
           <button
+            type="button"
             onClick={() => setSelectedCategory('ALL')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
               selectedCategory === 'ALL'
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+                ? 'bg-amber-400 text-black font-bold shadow-sm'
+                : 'bg-[#0d0d14] border border-white/8 text-neutral-400 hover:text-white'
             }`}
           >
-            Todas las Categorías ({products.length})
+            Todas ({products.length})
           </button>
 
           <button
+            type="button"
             onClick={() => setOnlyFavorites(!onlyFavorites)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
               onlyFavorites
                 ? 'bg-rose-600 text-white shadow-sm'
-                : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+                : 'bg-[#0d0d14] border border-white/8 text-neutral-400 hover:text-white'
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${onlyFavorites ? 'fill-white text-white' : 'text-rose-400'}`} />
             <span>Mis Favoritos</span>
-            <span className={`text-[10px] font-mono px-1 rounded ${onlyFavorites ? 'bg-rose-800 text-rose-200' : 'bg-zinc-800 text-zinc-500'}`}>
+            <span className={`text-[10px] font-mono px-1 rounded ${onlyFavorites ? 'bg-rose-800 text-rose-200' : 'bg-white/5 text-neutral-400'}`}>
               {favorites.length}
             </span>
           </button>
@@ -304,15 +324,16 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
             return (
               <button
                 key={cat.id}
+                type="button"
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                   isSelected
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+                    ? 'bg-white/15 border border-white/25 text-white shadow-sm'
+                    : 'bg-[#0d0d14] border border-white/8 text-neutral-400 hover:text-white hover:border-white/15'
                 }`}
               >
                 <span>{cat.name}</span>
-                <span className={`text-[10px] font-mono px-1 rounded ${isSelected ? 'bg-purple-800 text-purple-200' : 'bg-zinc-800 text-zinc-500'}`}>
+                <span className={`text-[10px] font-mono px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'bg-white/5 text-neutral-400'}`}>
                   {count}
                 </span>
               </button>
@@ -323,50 +344,58 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
       {/* Products Grid */}
       {filteredProducts.length === 0 ? (
-        <div className="p-16 text-center rounded-2xl bg-[#14141F] border border-zinc-800 text-zinc-400">
+        <div className="p-16 text-center rounded-2xl bg-[#0d0d14] border border-white/8 text-neutral-400">
           <p className="text-base font-bold text-white mb-1">No se encontraron servicios con estos filtros</p>
-          <p className="text-xs text-zinc-500 mb-4">
+          <p className="text-xs text-neutral-500 mb-4">
             Intenta cambiar los términos de búsqueda o restablecer los filtros aplicados.
           </p>
           <button
+            type="button"
             onClick={resetAllFilters}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors"
+            className="px-5 py-2.5 rounded-xl text-xs font-bold text-black bg-amber-400 hover:bg-amber-300 transition-colors cursor-pointer active:scale-95"
           >
             Ver Todos los Servicios
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => (
-            <ProductCard
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          {filteredProducts.map((product, idx) => (
+            <ScrollReveal
               key={product.id}
-              product={product}
-              onSelect={onSelectProduct}
-              onInstantBuy={onInstantBuy}
-            />
+              staggerIndex={idx % 6}
+              className="h-full"
+            >
+              <ProductCard
+                product={product}
+                index={idx}
+                onSelect={onSelectProduct}
+                onInstantBuy={onInstantBuy}
+              />
+            </ScrollReveal>
           ))}
         </div>
       )}
 
       {/* Vistos Recientemente Section */}
       {recentProducts.length > 0 && (
-        <section aria-label="Servicios vistos recientemente" className="pt-8 mt-12 border-t border-zinc-800/80 space-y-4">
+        <section aria-label="Servicios vistos recientemente" className="pt-8 mt-12 border-t border-white/8 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-purple-400" />
+              <Clock className="w-4 h-4 text-amber-400" />
               <h2 className="text-sm font-bold text-white tracking-wide">Vistos Recientemente</h2>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 font-mono">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-neutral-400 font-mono">
                 {recentProducts.length}
               </span>
             </div>
-            <span className="text-[11px] text-zinc-500">Historial local de navegación</span>
+            <span className="text-[11px] text-neutral-500">Historial local</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {recentProducts.slice(0, 3).map((product) => (
+            {recentProducts.slice(0, 3).map((product, idx) => (
               <ProductCard
                 key={`recent-${product.id}`}
                 product={product}
+                index={idx}
                 onSelect={onSelectProduct}
                 onInstantBuy={onInstantBuy}
               />

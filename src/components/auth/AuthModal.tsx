@@ -333,21 +333,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 )}
               </div>
               <div className="relative group">
-                <Lock className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3 top-3 transition-colors" />
+                <Lock className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3 top-3 transition-colors pointer-events-none" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black/45 border border-white/10 rounded-xl pl-9 pr-10 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/20"
+                  className="w-full bg-black/45 border border-white/10 rounded-xl pl-9 pr-11 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/20"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                   aria-pressed={showPassword}
-                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4 text-cyan-400" />
@@ -369,14 +370,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 Confirmar Contraseña
               </label>
               <div className="relative group">
-                <KeyRound className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3 top-3 transition-colors" />
+                <KeyRound className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3 top-3 transition-colors pointer-events-none" />
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   required
                   placeholder="Repite tu contraseña"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={`w-full bg-black/45 border rounded-xl pl-9 pr-10 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none transition-all ${
+                  className={`w-full bg-black/45 border rounded-xl pl-9 pr-11 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none transition-all ${
                     isPasswordMismatch
                       ? 'border-rose-500/80 focus:border-rose-500'
                       : isPasswordsMatching
@@ -387,9 +388,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  aria-label={showConfirmPassword ? 'Ocultar confirmación' : 'Ver confirmación'}
+                  aria-label={showConfirmPassword ? 'Ocultar confirmación de contraseña' : 'Ver confirmación de contraseña'}
+                  title={showConfirmPassword ? 'Ocultar confirmación' : 'Ver confirmación'}
                   aria-pressed={showConfirmPassword}
-                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   {showConfirmPassword ? (
                     <EyeOff className="w-4 h-4 text-cyan-400" />

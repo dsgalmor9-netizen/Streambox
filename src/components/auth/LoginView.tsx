@@ -25,12 +25,13 @@ import { PasswordRecoveryModal } from './PasswordRecoveryModal';
 
 interface LoginViewProps {
   onNavigate: (view: string) => void;
+  initialMode?: 'LOGIN' | 'REGISTER';
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onNavigate, initialMode = 'LOGIN' }) => {
   const { loginWithCredentials, loginWithGoogle, register, sendPasswordReset } = useStore();
 
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'RECOVERY'>('LOGIN');
+  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'RECOVERY'>(initialMode);
   const [isPasswordRecoveryOpen, setIsPasswordRecoveryOpen] = useState(false);
   const [email, setEmail] = useState(() => {
     try {
@@ -481,21 +482,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                 </div>
 
                 <div className="relative group">
-                  <Lock className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3.5 top-3 transition-colors" />
+                  <Lock className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3.5 top-3 transition-colors pointer-events-none" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-black/45 border border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner"
+                    className="w-full bg-black/45 border border-white/10 rounded-xl pl-10 pr-12 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                     aria-pressed={showPassword}
-                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors p-0.5 rounded cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     {showPassword ? (
                       <EyeOff className="w-4 h-4 text-cyan-400" />
@@ -519,14 +521,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                   Confirmar Contraseña
                 </label>
                 <div className="relative group">
-                  <KeyRound className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3.5 top-3 transition-colors" />
+                  <KeyRound className="w-4 h-4 text-zinc-500 group-focus-within:text-cyan-400 absolute left-3.5 top-3 transition-colors pointer-events-none" />
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
                     placeholder="Repite tu contraseña"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full bg-black/45 border rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none transition-all shadow-inner ${
+                    className={`w-full bg-black/45 border rounded-xl pl-10 pr-12 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none transition-all shadow-inner ${
                       isPasswordMismatch
                         ? 'border-rose-500/80 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20'
                         : isPasswordsMatching
@@ -537,9 +539,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={showConfirmPassword ? 'Ocultar confirmación' : 'Ver confirmación'}
+                    aria-label={showConfirmPassword ? 'Ocultar confirmación de contraseña' : 'Ver confirmación de contraseña'}
+                    title={showConfirmPassword ? 'Ocultar confirmación' : 'Ver confirmación'}
                     aria-pressed={showConfirmPassword}
-                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors p-0.5 rounded cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="w-4 h-4 text-cyan-400" />

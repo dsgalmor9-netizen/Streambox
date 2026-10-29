@@ -38,6 +38,7 @@ import { InvoiceModal } from '../common/InvoiceModal';
 import { ProductCard } from '../product/ProductCard';
 import { useToast } from '../common/Toast';
 import { buildWhatsAppUrl, getCustomerSupportWhatsApp } from '../../lib/whatsapp';
+import { PaymentHistoryWidget } from './PaymentHistoryWidget';
 
 interface ClientPortalViewProps {
   initialTab?: string;
@@ -667,62 +668,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         </div>
       )}
 
-      {/* TAB CONTENT: PAGOS */}
+      {/* TAB CONTENT: PAGOS (PaymentHistoryWidget with Cinema Glass styling) */}
       {activeTab === 'pagos' && (
-        <div className="space-y-4">
-          {userPayments.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-[#14141F] border border-zinc-800 text-zinc-400">
-              <CreditCard className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-white mb-1">No tienes pagos registrados</h3>
-              <p className="text-xs text-zinc-500">
-                Cuando realices una compra con Nequi o Daviplata, tus solicitudes aparecerán aquí.
-              </p>
-            </div>
-          ) : (
-            userPayments.map((pay) => (
-              <div
-                key={pay.id}
-                className="p-5 rounded-2xl bg-[#14141F] border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs"
-              >
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono font-bold text-white">{pay.id}</span>
-                    <span aria-hidden="true" className="text-zinc-600">·</span>
-                    <span className="text-zinc-400">Pedido #{pay.orderId}</span>
-                  </div>
-                  <div className="text-zinc-400">
-                    Método: <strong className="text-zinc-200">{pay.paymentMethod}</strong>
-                    {pay.referenceNumber && (
-                      <span className="ml-3">
-                        Ref: <strong className="font-mono text-cyan-400">{pay.referenceNumber}</strong>
-                      </span>
-                    )}
-                  </div>
-                  {pay.voucherNote && (
-                    <div className="text-zinc-500 text-[11px] mt-0.5">Nota: {pay.voucherNote}</div>
-                  )}
-                </div>
-
-                <div className="text-right">
-                  <div className="font-mono font-bold text-sm text-white mb-1">
-                    ${pay.totalCOP.toLocaleString('es-CO')} COP
-                  </div>
-                  <span className={`px-2.5 py-1 rounded text-[11px] font-semibold ${
-                    pay.status === 'PAGO_CONFIRMADO'
-                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
-                      : pay.status === 'PAGO_REPORTADO'
-                      ? 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
-                      : pay.status === 'PAGO_RECHAZADO'
-                      ? 'bg-rose-950/80 text-rose-300 border border-rose-800/60'
-                      : 'bg-zinc-800 text-zinc-300'
-                  }`}>
-                    {pay.status}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        <PaymentHistoryWidget
+          payments={userPayments}
+          orders={userOrders}
+          onSelectOrderForInvoice={(order) => setSelectedOrderForInvoice(order)}
+          onNavigateToChat={() => onNavigate('chat')}
+        />
       )}
 
       {/* TAB CONTENT: SERVICIOS & RENOVACIONES */}

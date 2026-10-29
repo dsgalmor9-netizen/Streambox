@@ -6,6 +6,7 @@ import { MobileDock } from './components/layout/MobileDock';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { AuthModal } from './components/auth/AuthModal';
 import { LoginView } from './components/auth/LoginView';
+import { RegisterView } from './components/auth/RegisterView';
 import { HomeView } from './components/home/HomeView';
 import { CatalogView } from './components/catalog/CatalogView';
 import { CheckoutView } from './components/checkout/CheckoutView';
@@ -43,6 +44,10 @@ const AppContent: React.FC = () => {
 
     // Requirement: Before accessing the store website, user MUST login or register.
     if (!currentUser) {
+      if (rawPath === 'register' || rawPath === 'registro') {
+        setCurrentView('register');
+        return;
+      }
       setCurrentView('login');
       if (rawPath && rawPath !== 'login') {
         window.history.replaceState(null, '', '/login');
@@ -109,7 +114,7 @@ const AppContent: React.FC = () => {
     setAccessDeniedMessage(null);
 
     // If user is not authenticated, keep in login/register
-    if (!currentUser && view !== 'login') {
+    if (!currentUser && view !== 'login' && view !== 'register' && view !== 'registro') {
       setCurrentView('login');
       window.history.pushState(null, '', '/login');
       return;
@@ -137,10 +142,10 @@ const AppContent: React.FC = () => {
   // Determine role before rendering interface to prevent flashes
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-[#0B0B10] flex flex-col items-center justify-center p-4 text-white">
+      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center p-4 text-white">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
-          <span className="text-xs font-mono text-zinc-400">
+          <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+          <span className="text-xs font-mono text-neutral-400">
             Verificando autenticación y permisos de seguridad...
           </span>
         </div>
@@ -153,7 +158,7 @@ const AppContent: React.FC = () => {
   // Dedicated Admin Interface Layout (Without normal store navigation as requested in Section 6)
   if (isSuperAdminView) {
     return (
-      <div className="min-h-screen bg-[#0B0B10] text-[#F3F4F6] selection:bg-purple-600 selection:text-white">
+      <div className="min-h-screen bg-[#09090b] text-[#F3F4F6] selection:bg-amber-500 selection:text-black">
         <AdminPortalView
           initialSubTab={currentView.replace('admin-', '') || 'dashboard'}
           onNavigate={handleNavigate}
@@ -165,7 +170,7 @@ const AppContent: React.FC = () => {
   // Pure Authentication Gateway View (No store navigation, no navbar, no catalog links while registering or logging in)
   if (!currentUser || currentView === 'login') {
     return (
-      <div className="min-h-screen flex flex-col justify-center bg-[#0B0B10] text-[#F3F4F6] selection:bg-purple-600 selection:text-white">
+      <div className="min-h-screen flex flex-col justify-center bg-[#09090b] text-[#F3F4F6] selection:bg-amber-500 selection:text-black">
         {accessDeniedMessage && (
           <div className="bg-rose-950/90 border-b border-rose-800 text-rose-200 px-4 py-2.5 text-xs text-center flex items-center justify-center gap-2 z-50">
             <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
@@ -185,7 +190,7 @@ const AppContent: React.FC = () => {
 
   // Client Store Interface Layout (Only accessible AFTER authenticated)
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B0B10] text-[#F3F4F6] selection:bg-purple-600 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-[#09090b] text-[#F3F4F6] selection:bg-amber-500 selection:text-black">
       {/* Access Denied Security Notice */}
       {accessDeniedMessage && (
         <div className="bg-rose-950/90 border-b border-rose-800 text-rose-200 px-4 py-2.5 text-xs text-center flex items-center justify-center gap-2 z-50">
@@ -228,6 +233,10 @@ const AppContent: React.FC = () => {
 
         {currentView === 'login' && (
           <LoginView onNavigate={handleNavigate} />
+        )}
+
+        {(currentView === 'register' || currentView === 'registro') && (
+          <RegisterView onNavigate={handleNavigate} />
         )}
 
         {currentView === 'catalogo' && (
@@ -324,18 +333,33 @@ const AppContent: React.FC = () => {
         onInstantBuy={handleInstantBuy}
       />
 
+      {/* Global Search Modal with Real-Time Filtering */}
+      <GlobalSearchModal
+        onSelectProduct={(p) => setSelectedProductDetail(p)}
+        onInstantBuy={handleInstantBuy}
+        onNavigateToCatalog={() => handleNavigate('catalogo')}
+      />
+
       {/* Cookie & Privacy Consent Banner (Ley 1581) */}
       <CookieConsentBanner onOpenPreferences={() => handleNavigate('cookies')} />
     </div>
   );
 };
 
+import { CurrencyProvider } from './context/CurrencyContext';
+import { SearchProvider } from './context/SearchContext';
+import { GlobalSearchModal } from './components/common/GlobalSearchModal';
+
 export default function App() {
   return (
     <StoreProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
+      <CurrencyProvider>
+        <SearchProvider>
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
+        </SearchProvider>
+      </CurrencyProvider>
     </StoreProvider>
   );
 }

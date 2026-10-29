@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StreamBoxLogo } from '../common/StreamBoxLogo';
 import { useStore } from '../../context/StoreContext';
+import { useSearch } from '../../context/SearchContext';
 import {
   ShoppingBag,
   MessageSquare,
@@ -16,6 +17,7 @@ import {
   TrendingDown,
   Heart,
   Settings,
+  Search,
 } from 'lucide-react';
 import { DeveloperPriceAdjusterModal } from '../admin/DeveloperPriceAdjusterModal';
 
@@ -38,10 +40,49 @@ export const Navbar: React.FC<NavbarProps> = ({
     cart,
     unreadNotificationsCount,
   } = useStore();
+  const { openSearchModal } = useSearch();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isPriceAdjusterModalOpen, setIsPriceAdjusterModalOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // High-performance IntersectionObserver sentinel (> 40px trigger without window.addEventListener('scroll'))
+  useEffect(() => {
+    let sentinel = document.getElementById('navbar-scroll-sentinel');
+    let created = false;
+    if (!sentinel) {
+      sentinel = document.createElement('div');
+      sentinel.id = 'navbar-scroll-sentinel';
+      sentinel.style.position = 'absolute';
+      sentinel.style.top = '0';
+      sentinel.style.left = '0';
+      sentinel.style.width = '100%';
+      sentinel.style.height = '40px';
+      sentinel.style.pointerEvents = 'none';
+      sentinel.style.zIndex = '-9999';
+      document.body.prepend(sentinel);
+      created = true;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        // If entry is intersecting, user is at top <= 40px; otherwise > 40px
+        setIsScrolled(!entry.isIntersecting);
+      },
+      { threshold: 0 }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+      if (created && sentinel?.parentNode) {
+        sentinel.parentNode.removeChild(sentinel);
+      }
+    };
+  }, []);
 
   const totalCartItems = cart.reduce((acc, i) => acc + i.quantity, 0);
   const isAdmin = currentUser && currentUser.role === 'SUPER_ADMIN';
@@ -54,30 +95,36 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#0B0B10]/90 backdrop-blur-md border-b border-zinc-800/80">
+    <header
+      className={`sticky top-0 z-40 w-full transition-[background-color,border-color,backdrop-filter,padding] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isScrolled
+          ? 'bg-neutral-950/80 backdrop-blur-md border-b border-white/10 py-3 shadow-[0_4px_25px_rgba(0,0,0,0.5)]'
+          : 'bg-transparent border-b border-transparent py-5'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20 gap-4">
+        <div className="flex items-center justify-between gap-4">
           
           {/* Zone 1: Brand Wordmark */}
           <div className="flex items-center gap-4 shrink-0">
             <button
               onClick={() => onNavigate('inicio')}
-              className="text-left focus:outline-none transition-transform active:scale-98"
+              className="text-left focus:outline-none transition-transform active:scale-95 cursor-pointer"
             >
               <StreamBoxLogo size="md" />
             </button>
           </div>
 
           {/* Zone 2: Navigation Links (single line, no wrapping) */}
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-300">
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-300">
             {navLinks.map((link) => (
               <button
                 key={link.id}
                 onClick={() => onNavigate(link.id)}
-                className={`transition-colors whitespace-nowrap py-1 relative hover:text-white ${
+                className={`transition-colors whitespace-nowrap py-1 relative hover:text-white cursor-pointer ${
                   currentView === link.id
-                    ? 'text-white font-semibold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-gradient-to-r after:from-cyan-400 after:to-purple-500'
-                    : 'text-zinc-400'
+                    ? 'text-white font-semibold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-amber-400'
+                    : 'text-neutral-400'
                 }`}
               >
                 {link.label}
@@ -87,28 +134,42 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isAdmin && (
               <button
                 onClick={() => onNavigate('admin')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold tracking-wide uppercase transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold tracking-wide uppercase transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
                   currentView.startsWith('admin')
-                    ? 'bg-purple-600 text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]'
-                    : 'bg-purple-950/60 text-purple-300 border border-purple-800/60 hover:bg-purple-900/60'
+                    ? 'bg-amber-400 text-black shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                    : 'bg-white/5 text-amber-300 border border-amber-500/30 hover:bg-white/10'
                 }`}
               >
-                <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                <Shield className="w-3.5 h-3.5 text-amber-400" />
                 Panel Admin
               </button>
             )}
           </nav>
 
-            {/* Zone 3: Primary Action & User Affordances */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Zone 3: Primary Action & User Affordances */}
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+
+            {/* Global Search Button */}
+            <button
+              type="button"
+              onClick={() => openSearchModal()}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Buscar plataformas y suscripciones (⌘K o /)"
+            >
+              <Search className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Buscar...</span>
+              <kbd className="hidden lg:inline text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40 border border-white/10 text-neutral-400">
+                ⌘K
+              </kbd>
+            </button>
 
             {isAdmin && (
               <button
                 onClick={() => setIsPriceAdjusterModalOpen(true)}
-                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded border border-purple-800/60 bg-purple-950/60 text-purple-300 hover:bg-purple-900/60 hover:text-white transition-colors cursor-pointer shadow-[0_0_10px_rgba(168,85,247,0.2)]"
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-amber-500/30 bg-white/5 text-amber-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                 title="Ajustador de Precios Desarrollador (-6.000 COP / Ajustable)"
               >
-                <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                <Sliders className="w-3.5 h-3.5 text-amber-400" />
                 <span>Precios Dev (-6k/+)</span>
               </button>
             )}
@@ -116,24 +177,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Notifications Button */}
             <button
               onClick={() => onNavigate('cuenta-notificaciones')}
-              className="relative p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+              className="relative p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer active:scale-95"
               title="Notificaciones"
             >
               <Bell className="w-5 h-5" />
               {unreadNotificationsCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-purple-500 ring-2 ring-[#0B0B10]" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-[#09090b]" />
               )}
             </button>
 
             {/* Shopping Cart Button */}
             <button
               onClick={onOpenCart}
-              className="relative p-2.5 rounded-lg text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 transition-all flex items-center gap-2"
+              className="relative p-2.5 rounded-xl text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
               title="Carrito de compras"
             >
-              <ShoppingBag className="w-5 h-5 text-purple-400" />
+              <ShoppingBag className="w-5 h-5 text-amber-400" />
               {totalCartItems > 0 && (
-                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-gradient-to-r from-purple-600 to-cyan-500 rounded-full">
+                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-black bg-amber-400 rounded-full font-mono">
                   {totalCartItems}
                 </span>
               )}
