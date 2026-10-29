@@ -16,6 +16,7 @@ import {
   Eye,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Filter,
   DollarSign,
@@ -55,6 +56,7 @@ import {
   getOrderPaymentInstructionsWhatsApp,
 } from '../../lib/whatsapp';
 import { PremiumAnalyticsWidget } from './PremiumAnalyticsWidget';
+import { PerformanceOverview } from './PerformanceOverview';
 
 interface AdminPortalViewProps {
   initialSubTab?: string;
@@ -439,6 +441,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </div>
           </div>
 
+          {/* Performance Overview Recharts Widget (30-day Line & Bar Charts) */}
+          <PerformanceOverview />
+
           {/* Premium Analytics Widget with Real-time D3 Line Chart */}
           <PremiumAnalyticsWidget />
 
@@ -637,6 +642,23 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               >
                 <Sliders className="w-3.5 h-3.5 text-purple-400" />
                 <span>Ajustar Precios (Modo Dev)...</span>
+              </button>
+
+              {/* Admin Button: Restablecer Precios Originales Iniciales */}
+              <button
+                onClick={() => {
+                  const res = resetCatalogPrices();
+                  setPriceAdjustToast({
+                    text: `Precios originales restablecidos a su valor inicial en ${res.resetCount} modalidades.`,
+                    type: 'success',
+                  });
+                  setTimeout(() => setPriceAdjustToast(null), 5000);
+                }}
+                className="px-3 py-2 rounded-xl bg-amber-950/70 hover:bg-amber-900/70 text-amber-200 border border-amber-700/70 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+                title="Restaura todos los precios del catálogo comercial a los precios originales iniciales"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Restablecer Precios Originales</span>
               </button>
 
               <button
@@ -1828,6 +1850,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <h2 className="text-base font-bold text-white">Estadísticas Comerciales y Rendimiento</h2>
             <p className="text-xs text-zinc-400 mt-0.5">Indicadores clave de ventas, métodos de pago y conversión en Colombia</p>
           </div>
+
+          {/* Performance Overview Recharts Widget (30-day Line & Bar Charts) */}
+          <PerformanceOverview />
 
           {/* D3 Premium Real-Time Analytics Widget */}
           <PremiumAnalyticsWidget />

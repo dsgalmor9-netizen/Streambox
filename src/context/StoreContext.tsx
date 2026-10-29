@@ -1308,14 +1308,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetCatalogPrices = (): { resetCount: number } => {
     let count = 0;
+    // Map initial original prices from INITIAL_PRODUCTS
+    const initialMap = new Map<string, Map<string, number | null>>();
+    INITIAL_PRODUCTS.forEach((ip) => {
+      const modMap = new Map<string, number | null>();
+      ip.modalities.forEach((m) => {
+        modMap.set(m.id, m.priceCOP);
+      });
+      initialMap.set(ip.id, modMap);
+    });
+
     setProducts((prev) =>
       prev.map((p) => {
+        const initialMods = initialMap.get(p.id);
         const updatedModalities = p.modalities.map((m) => {
-          if (m.originalPriceCOP !== undefined && m.originalPriceCOP !== m.priceCOP) {
+          const initPrice = initialMods?.get(m.id) ?? m.originalPriceCOP ?? m.priceCOP;
+          if (initPrice !== undefined && initPrice !== m.priceCOP) {
             count++;
             return {
               ...m,
-              priceCOP: m.originalPriceCOP,
+              priceCOP: initPrice,
             };
           }
           return m;
@@ -1324,7 +1336,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    logAuditAction('RESTABLECER_PRECIOS', 'Catálogo', `Precios base restablecidos en ${count} modalidades.`);
+    logAuditAction('RESTABLECER_PRECIOS_ORIGINALES', 'Catálogo', `Precios originales restablecidos a su valor inicial en ${count} modalidades.`);
     return { resetCount: count };
   };
 

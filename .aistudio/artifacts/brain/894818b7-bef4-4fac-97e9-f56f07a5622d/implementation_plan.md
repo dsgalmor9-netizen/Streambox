@@ -97,7 +97,23 @@ Implementation plan for upgrading the StreamBox Colombia authentication system t
        └────────────────────────┘    └────────────────────────┘
 ```
 
-- **Interactive Component Mapping**:
+### 5. Performance Overview & Admin Capabilities
+
+- **Recharts Donut Chart (`PerformanceOverview.tsx`)**:
+  - Implemented a Donut Chart (`PieChart`, `Pie`, `Cell`, `Tooltip`, `ResponsiveContainer`) directly integrated next to the existing Bar Chart in a balanced side-by-side grid (`grid-cols-1 lg:grid-cols-2`).
+  - Visualizes subscription lifecycle distribution:
+    - *Activas (En Garantía)*: Emerald `#10B981` (100% legal warranty)
+    - *Por Renovar (≤ 3 días)*: Violet `#8B5CF6` (Automatic WhatsApp notice)
+    - *En Revisión / Pendientes*: Amber `#F59E0B` (Payment/credential validation)
+    - *Vencidas / Expiradas*: Rose/Red `#EF4444` (Cycle finished)
+  - Interactive custom Dark Cinema tooltip and center total subscription count badge.
+  - Tab selector updated with 4 options: `Vista Completa`, `Ingresos Diarios`, `Categorías`, and `Estados (Donut)`.
+  - Export to CSV enhanced with Section 4 detailing the Donut Chart status breakdown.
+
+- **Admin Original Price Reset Button ("Restablecer Precios Originales")**:
+  - Accessible directly in the action bar of `PerformanceOverview.tsx` and in the Catálogo/Productos management panel of `AdminPortalView.tsx`.
+  - Executes `resetCatalogPrices()`, restoring all products and modalities to their initial launch prices from `INITIAL_PRODUCTS`.
+  - Displays instant visual feedback toast with the count of synchronized modalities and auto-dismiss.
   - `src/components/auth/GlassAuthCard.tsx` (or integrated in `LoginView.tsx`): Houses the glass container, animated background SVG curves, mode switcher, and form logic.
   - `src/components/auth/PasswordStrengthMeter.tsx`: Lightweight, reactive strength evaluator checking length, numbers, upper/lowercase, and special characters with animated visual bar.
   - `src/components/auth/GoogleAccountChooserModal.tsx`: Unchanged 1-click Google Account Chooser preserving full zero-typing workflow.

@@ -39,6 +39,7 @@ import { ProductCard } from '../product/ProductCard';
 import { useToast } from '../common/Toast';
 import { buildWhatsAppUrl, getCustomerSupportWhatsApp } from '../../lib/whatsapp';
 import { PaymentHistoryWidget } from './PaymentHistoryWidget';
+import { RecentPurchasesCard } from './RecentPurchasesCard';
 
 interface ClientPortalViewProps {
   initialTab?: string;
@@ -431,7 +432,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
       {/* TAB CONTENT: PEDIDOS */}
       {activeTab === 'pedidos' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Glassmorphism Recent Purchases Card consuming Firebase Firestore */}
+          <RecentPurchasesCard
+            onSelectOrderForInvoice={(order) => setSelectedOrderForInvoice(order)}
+            onNavigateToCatalog={() => onNavigate('catalogo')}
+            onNavigateToChat={() => onNavigate('chat')}
+          />
+
           {userOrders.length === 0 ? (
             <div className="p-12 text-center rounded-2xl bg-[#14141F] border border-zinc-800 text-zinc-400">
               <ShoppingBag className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
