@@ -32,6 +32,9 @@ import {
   Settings,
   CheckCircle2,
   Lock,
+  BellRing,
+  Radio,
+  AlertTriangle,
 } from 'lucide-react';
 import { BrandLogo } from '../common/BrandLogo';
 import { InvoiceModal } from '../common/InvoiceModal';
@@ -169,6 +172,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     products,
     updateUserProfile,
     toggleFavorite,
+    isPushNotificationSupported,
+    browserNotificationPermission,
+    requestPushNotificationPermission,
+    sendPushTestNotification,
+    notifyOrderDeliveredManually,
   } = useStore();
 
   const { success: toastSuccess, info: toastInfo } = useToast();
@@ -176,6 +184,45 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [activeTab, setActiveTab] = useState(initialTab);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
+  const [dismissedPushBanner, setDismissedPushBanner] = useState(false);
+  const [currentPushPermission, setCurrentPushPermission] = useState<NotificationPermission>(browserNotificationPermission);
+
+  const handleEnablePushNotifications = async () => {
+    const res = await requestPushNotificationPermission();
+    setCurrentPushPermission(res);
+    if (res === 'granted') {
+      toastSuccess('¡Notificaciones push activadas en tu navegador!');
+      sendPushTestNotification('delivery');
+    } else if (res === 'denied') {
+      toastInfo('Las notificaciones están bloqueadas en tu navegador. Puedes desbloquearlas desde el candado de la URL.');
+    }
+  };
+
+  const handleTestNotification = (type: 'delivery' | 'expiring') => {
+    if (currentPushPermission !== 'granted') {
+      handleEnablePushNotifications();
+      return;
+    }
+    const result = sendPushTestNotification(type);
+    if (result.delivered) {
+      toastSuccess(`¡Notificación de prueba (${type === 'delivery' ? 'Entrega' : 'Vencimiento'}) enviada a tu pantalla!`);
+    } else {
+      toastInfo(result.message || 'No se pudo enviar la notificación push');
+    }
+  };
+
+  const handleManualOrderPush = (orderId: string) => {
+    if (currentPushPermission !== 'granted') {
+      handleEnablePushNotifications();
+      return;
+    }
+    const success = notifyOrderDeliveredManually(orderId);
+    if (success) {
+      toastSuccess(`Aviso push de entrega del pedido #${orderId} enviado a tu navegador.`);
+    } else {
+      toastInfo('Asegúrate de permitir las notificaciones en tu navegador.');
+    }
+  };
 
   // New ticket state
   const [showNewTicketModal, setShowNewTicketModal] = useState(false);
@@ -310,6 +357,51 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           <span>Cerrar Sesión</span>
         </button>
       </div>
+
+      {/* Browser Push Notification Quick Activation Banner */}
+      {isPushNotificationSupported && currentPushPermission === 'default' && !dismissedPushBanner && (
+        <div className="relative overflow-hidden mb-8 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-zinc-950 border border-amber-500/30 shadow-[0_4px_25px_rgba(245,158,11,0.12)]">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <BellRing className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    Activar Notificaciones Push del Navegador
+                  </h3>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wide">
+                    En Tiempo Real
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 mt-1 max-w-2xl leading-relaxed">
+                  Recibe alertas sonoras y visuales cuando tus credenciales sean entregadas o tus cuentas estén próximas a vencer, sin necesidad de refrescar la pantalla.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleEnablePushNotifications}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold text-black bg-amber-400 hover:bg-amber-300 transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(245,158,11,0.25)] cursor-pointer active:scale-95"
+              >
+                <BellRing className="w-3.5 h-3.5" />
+                <span>Activar Alertas Push</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissedPushBanner(true)}
+                className="px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                title="Descartar aviso"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs navigation */}
       <div className="flex items-center gap-2 border-b border-zinc-800 pb-3 mb-8 overflow-x-auto no-scrollbar">
@@ -532,22 +624,33 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         <ShieldCheck className="w-4 h-4" />
                         <span>Credenciales y Acceso Entregado</span>
                       </div>
-                      <button
-                        onClick={() => handleCopy(order.credentialsDelivered!, `cred-${order.id}`)}
-                        className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white"
-                      >
-                        {copiedKey === `cred-${order.id}` ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Copiado</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Copiar credenciales</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleManualOrderPush(order.id)}
+                          className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-200 transition-colors cursor-pointer"
+                          title="Enviar notificación push de este pedido a tu pantalla"
+                        >
+                          <BellRing className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Aviso Push</span>
+                        </button>
+                        <button
+                          onClick={() => handleCopy(order.credentialsDelivered!, `cred-${order.id}`)}
+                          className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white"
+                        >
+                          {copiedKey === `cred-${order.id}` ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Copiado</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copiar credenciales</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="p-2.5 rounded bg-zinc-900 font-mono text-zinc-200 text-xs select-all">
@@ -1393,53 +1496,187 @@ Usa mi código de descuento: *${referralCode}* para recibir 10% OFF en tu primer
 
       {/* TAB CONTENT: NOTIFICACIONES */}
       {activeTab === 'notificaciones' && (
-        <div className="space-y-3">
-          {userNotifications.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-[#14141F] border border-zinc-800 text-zinc-400">
-              <Bell className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-white mb-1">No tienes notificaciones</h3>
-              <p className="text-xs text-zinc-500">
-                Aquí recibirás avisos en tiempo real sobre tus pagos, entregas y promociones.
-              </p>
-            </div>
-          ) : (
-            userNotifications.map((notif) => (
-              <div
-                key={notif.id}
-                onClick={() => markNotificationAsRead(notif.id)}
-                className={`p-4 rounded-xl border flex items-start justify-between gap-3 text-xs cursor-pointer transition-colors ${
-                  notif.read
-                    ? 'bg-zinc-900/40 border-zinc-800/60 text-zinc-400'
-                    : 'bg-purple-950/20 border-purple-800/60 text-zinc-200'
-                }`}
-              >
+        <div className="space-y-6">
+          {/* Native Browser Push Notification Hub */}
+          <div className="p-6 rounded-2xl bg-[#14141F] border border-zinc-800 shadow-xl relative overflow-hidden">
+            {/* Top Glow Accent */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-purple-500 to-cyan-500" />
+
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-5 border-b border-zinc-800/80">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-purple-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+                  <Radio className="w-6 h-6 animate-pulse" />
+                </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-bold text-white">{notif.title}</h5>
-                    {!notif.read && (
-                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <span>Notificaciones Push del Navegador</span>
+                    </h2>
+                    {/* Status Pill */}
+                    {!isPushNotificationSupported ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700">
+                        No soportado
+                      </span>
+                    ) : currentPushPermission === 'granted' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        Alertas Activas en este Navegador
+                      </span>
+                    ) : currentPushPermission === 'denied' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-950/60 text-rose-400 border border-rose-500/30">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Bloqueadas en el Navegador
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                        <Bell className="w-3.5 h-3.5" />
+                        Pendiente de Activación
+                      </span>
                     )}
                   </div>
-                  <p className="text-xs text-zinc-300 mt-0.5">{notif.message}</p>
-                  <span className="text-[10px] text-zinc-500 mt-1 block">
-                    {new Date(notif.createdAt).toLocaleTimeString('es-CO')}
-                  </span>
+                  <p className="text-xs text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+                    Avisos en tiempo real mediante la API oficial Web Notifications. Te avisamos directamente en tu sistema operativo cuando tu pedido sea entregado o tus credenciales estén por vencer.
+                  </p>
                 </div>
+              </div>
 
-                {notif.linkTab && (
+              {/* Action & Test Controls */}
+              <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto shrink-0">
+                {currentPushPermission !== 'granted' && isPushNotificationSupported && (
                   <button
-                    onClick={() => {
-                      if (notif.linkTab === 'chat') onNavigate('chat');
-                      else if (notif.linkTab) setActiveTab(notif.linkTab);
-                    }}
-                    className="text-xs text-cyan-400 font-semibold hover:underline shrink-0"
+                    type="button"
+                    onClick={handleEnablePushNotifications}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-black bg-amber-400 hover:bg-amber-300 transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(245,158,11,0.25)] cursor-pointer active:scale-95"
                   >
-                    Ver detalles
+                    <BellRing className="w-4 h-4" />
+                    <span>Activar Notificaciones Push</span>
                   </button>
                 )}
+
+                {/* Test Buttons (available anytime to verify audio tone and notification popups) */}
+                <button
+                  type="button"
+                  onClick={() => handleTestNotification('delivery')}
+                  className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/40 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  title="Prueba una notificación simulada de credenciales entregadas"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Probar Entrega</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestNotification('expiring')}
+                  className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/40 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  title="Prueba una notificación preventiva de cuenta por vencer"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Probar Vencimiento</span>
+                </button>
               </div>
-            ))
-          )}
+            </div>
+
+            {/* Instruction if blocked */}
+            {currentPushPermission === 'denied' && (
+              <div className="mt-4 p-3.5 rounded-xl bg-rose-950/30 border border-rose-900/50 flex items-start gap-3 text-xs text-rose-300">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                <div>
+                  <strong className="block text-white mb-0.5">Permisos denegados por el navegador</strong>
+                  <span>Para recibir alertas, haz clic en el candado 🔒 situado a la izquierda de la barra de direcciones de tu navegador, selecciona <strong>Notificaciones: Permitir</strong> y recarga la pestaña.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Notification Feature Highlights Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-5">
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold mb-1">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>1. Entrega Inmediata</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Recibes una alerta sonora y visual en tu pantalla tan pronto como tus credenciales y pines de acceso sean activados.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                <div className="flex items-center gap-2 text-amber-400 text-xs font-bold mb-1">
+                  <Clock className="w-4 h-4" />
+                  <span>2. Alerta de Vencimiento</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Aviso automático 3 días y 1 día antes del vencimiento para que renueves sin interrupción ni pérdida de perfiles.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                <div className="flex items-center gap-2 text-purple-400 text-xs font-bold mb-1">
+                  <CreditCard className="w-4 h-4" />
+                  <span>3. Verificación de Pagos</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Confirmación instantánea cuando el comprobante de Nequi o Daviplata sea aprobado por el Super Admin.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* In-App Notifications History */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Bell className="w-4 h-4 text-purple-400" />
+                <span>Historial de Avisos en Plataforma ({userNotifications.length})</span>
+              </h3>
+            </div>
+
+            {userNotifications.length === 0 ? (
+              <div className="p-10 text-center rounded-2xl bg-[#14141F] border border-zinc-800 text-zinc-400">
+                <Bell className="w-10 h-10 text-zinc-600 mx-auto mb-2" />
+                <h4 className="text-sm font-bold text-white mb-1">No tienes avisos pendientes</h4>
+                <p className="text-xs text-zinc-500">
+                  Las alertas de entregas y renovaciones aparecerán aquí y en tus notificaciones push del navegador.
+                </p>
+              </div>
+            ) : (
+              userNotifications.map((notif) => (
+                <div
+                  key={notif.id}
+                  onClick={() => markNotificationAsRead(notif.id)}
+                  className={`p-4 rounded-xl border flex items-start justify-between gap-3 text-xs cursor-pointer transition-colors ${
+                    notif.read
+                      ? 'bg-zinc-900/40 border-zinc-800/60 text-zinc-400'
+                      : 'bg-purple-950/20 border-purple-800/60 text-zinc-200'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h5 className="font-bold text-white">{notif.title}</h5>
+                      {!notif.read && (
+                        <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-300 mt-0.5">{notif.message}</p>
+                    <span className="text-[10px] text-zinc-500 mt-1 block font-mono">
+                      {new Date(notif.createdAt).toLocaleTimeString('es-CO')}
+                    </span>
+                  </div>
+
+                  {notif.linkTab && (
+                    <button
+                      onClick={() => {
+                        if (notif.linkTab === 'chat') onNavigate('chat');
+                        else if (notif.linkTab) setActiveTab(notif.linkTab);
+                      }}
+                      className="text-xs text-cyan-400 font-semibold hover:underline shrink-0"
+                    >
+                      Ver detalles
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 

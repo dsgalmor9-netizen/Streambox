@@ -118,8 +118,84 @@ Implementation plan for upgrading the StreamBox Colombia authentication system t
   - `src/components/auth/PasswordStrengthMeter.tsx`: Lightweight, reactive strength evaluator checking length, numbers, upper/lowercase, and special characters with animated visual bar.
   - `src/components/auth/GoogleAccountChooserModal.tsx`: Unchanged 1-click Google Account Chooser preserving full zero-typing workflow.
   - `src/context/StoreContext.tsx`: Exposes `sendPasswordReset` and executes `createUserWithEmailAndPassword` + Firestore profile syncing safely.
+- **Live Chat Reset for Users ("Reiniciar Chat en Vivo")**:
+  - Implemented `resetUserChat(targetUserId?: string)` in `StoreContext.tsx` to safely clean user conversation history, reinitialize `chatMode` to `BOT_ACTIVE`, reset `isBotTyping`, and restore the fresh StreamBot AI greeting.
+  - Added a prominent *"Reiniciar Chat"* button in the `ChatView.tsx` header with `RotateCcw` icon and active elastic feedback.
+  - Added a matching *"REINICIAR CHAT"* badge in the Quick Tool Actions bar alongside order, payment, and expiration lookups.
+  - Added an interactive Dark Cinema confirmation modal explaining the action and assuring the user that orders, payments, and account data remain 100% secure.
+  - Integrated immediate animated visual feedback banner: *"¡Chat reiniciado con éxito! Se ha iniciado una nueva sesión limpia con StreamBot AI."*
+- **ChatView Session History Persistence via localStorage**:
+  - Implemented automatic local persistence for the active chat session in `ChatView.tsx` using `localStorage` keys `sb_chat_session_history_${userId}`, `sb_chat_session_meta_${userId}`, and `sb_chat_session_draft_${userId}`.
+  - Preserves the entire message stream when users navigate between views (e.g. Catálogo, Inicio, Cuenta, Giveaway, etc.) and return to Mi Chat.
+  - Added unsent text draft recovery so any message in progress is preserved across section navigation.
+  - Integrated real-time session indicator pill in the header showing active message count and storage status.
+  - Added an inspector modal to review session metadata and download a complete transcript (.TXT) of the conversation.
+- **Browser Push Notifications (Web Notification API)**:
+  - Created `src/lib/browserNotifications.ts` providing native Web Notification API integration with discrete Web Audio API dual-harmonic chimes (F#5 + B5) and high-res SVG brand icons.
+  - Automatic order delivery alerts (`notifyOrderDelivered`) triggered when payments are confirmed or credentials are dispatched by admin.
+  - Automatic subscription expiration alerts (`notifySubscriptionExpiringSoon`) triggered when active subscriptions enter their final 3 days (or on expiration day).
+  - Anti-spam deduplication via localStorage keys (`sb_notif_delivered_${order.id}` and `sb_notif_expiring_${order.id}_${date}`).
+  - Cinema-glass Push Notification Control Center integrated directly into `ClientPortalView.tsx` under the "Notificaciones" tab, with real-time permission status pill (Activas, Pendientes, Bloqueadas), 1-click permission activation, and interactive test buttons ("Probar Entrega" and "Probar Vencimiento").
+  - Quick activation banner displayed above portal tabs for users who have not yet enabled browser push notifications.
+  - Direct order credential action button ("Aviso Push") to test delivery alerts directly on any active delivered subscription.
+- **Dashboard Esquemático con Gráficos D3 en Administración (`SchematicD3Dashboard.tsx`)**:
+  - Implementación con D3 (`d3.js v7`) de un dashboard visual esquemático integrado en el portal de administración (`AdminPortalView.tsx`) en el tab principal "Dashboard", la sub-sección "Estadísticas" y un tab directo "Dashboard D3 Esquemático".
+  - **Gráfico D3 de Ventas Diarias**: Curva vectorial suave interpolada con `d3.curveMonotoneX`, gradiente ámbar/dorado (`#f59e0b`), barras esquemáticas de fondo, retícula milimétrica, selector de rango de tiempo (7 Días, 14 Días, 30 Días), crosshair interactivo y hover con inspección en tiempo real de facturación COP y conteo de órdenes diarias.
+  - **Gráfico D3 de Productos Más Vendidos**: Ranking vectorial de barras horizontales generado con `d3.scaleBand` y `d3.scaleLinear`, patrones de rayado técnico (`d3-schematic-stripes`), paleta de color oficial por marca (Netflix, Spotify, Disney+, Max, YouTube, OpenAI), volumen facturado en COP, unidades vendidas y cuota porcentual.
+  - **Gráfico D3 de Rendimiento de Pasarelas (Nequi vs. Daviplata)**: Diagrama Donut radial con `d3.pie` y `d3.arc` comparando Nequi (`#00D2C4`) y Daviplata (`#ED1C24`), tarjeta HUD central con la pasarela líder, cuota de mercado, volumen total procesado, tasa de aprobación auditada (%) y tiempos medios de verificación manual.
+  - **Controles Esquemáticos**: Filtro de vistas (Todo, Solo Ventas, Solo Productos, Solo Pasarelas), botón de refresco animado y exportación de informe esquemático completo a CSV.
+- **Indicadores de Tendencia Visuales (Trend Indicators & Badges en D3)**:
+  - Componente reusable `TrendBadge` con soporte para dirección positiva (`TrendingUp` / `ArrowUpRight`, esmeralda `#10b981`), negativa (`TrendingDown` / `ArrowDownRight`, rosa/rojo `#f43f5e`), o neutra, formateando porcentajes explícitos `+X.X%` / `-X.X%` con fondos translúcidos y bordes pulidos.
+  - **Métricas HUD Principales**:
+    - Facturación del Periodo: Crecimiento porcentual vs. mitad anterior (`revenueGrowthPct`).
+    - Transacciones Realizadas: Crecimiento de pedidos (`ordersGrowthPct`).
+    - Ventas Diarias Hoy / Último Día: Tasa diaria respecto al día anterior (`todayGrowthPct`).
+    - Pasarela Preferida: Badge de crecimiento mensual del líder (Nequi / Daviplata).
+  - **Gráfico D3 de Ventas Diarias**:
+    - Tag SVG interactivo en el nodo más reciente de la curva temporal (`d3.line`) con fondo esquemático y flecha de tendencia.
+    - Indicador de tendencia en el hover crosshair mostrando la variación día a día respecto a la jornada anterior.
+  - **Gráfico D3 de Productos Más Vendidos**:
+    - Etiquetas de tendencia embebidas en el canvas SVG (`▲ +X.X%` / `▼ -X.X%`) posicionadas al final de cada barra horizontal.
+    - Badge de tendencia en el panel de inspección hover para el producto seleccionado.
+  - **Rendimiento de Pasarelas**:
+    - Indicador de tendencia y crecimiento mensual integrado en las tarjetas de Nequi (+18.2%) y Daviplata (+9.6%) junto a su porcentaje de cuota.
+- **Exportación de Ventas y Rendimiento a CSV en el Admin Dashboard (`salesPerformanceExport.ts`)**:
+  - Botón prominente **'Exportar a CSV'** en la cabecera del Admin Dashboard (`activeTab === 'dashboard'`), en la barra superior de acciones del administrador y en el módulo de Estadísticas.
+  - Generación de archivo CSV estructurado con formato UTF-8 BOM (`\uFEFF`) para compatibilidad directa con Microsoft Excel (sin errores de acentos o caracteres de moneda COP), Google Sheets, Python (Pandas) y PowerBI.
+  - **Estructura Multi-Sección del Reporte CSV**:
+    1. Metadatos y firma de auditoría del Super Administrador (`d.s.gal.mor.9@gmail.com`).
+    2. Resumen ejecutivo de KPIs (Volumen COP, Pedidos, Ticket Promedio, Pagos Pendientes/Confirmados, Tasa de Aprobación 98.2%, Tiempo Medio de Entrega).
+    3. Serie temporal de ventas diarias de los últimos 30 días (Fecha ISO, Fecha descrita, Ventas COP, Despachos, Ticket Promedio COP, Tendencia porcentual día a día).
+    4. Rendimiento del catálogo por producto y servicio (Unidades vendidas, Recaudación COP, Cuota de ventas %, Tendencia de demanda, Precio unitario).
+    5. Rendimiento de pasarelas colombianas (Nequi vs Daviplata, líneas oficiales, volumen procesado, cuota de mercado %, tasa de aprobación, tiempos de verificación, crecimiento mensual).
+    6. Distribución de cuentas bajo gestión y salud de garantía legal (Ley 1480 de 2011).
+    7. Libro auditado detallado de transacciones y pedidos (ID Pedido, Fecha, Cliente, Email, Celular WhatsApp, Servicio/Modalidad, Pasarela, Referencia Comprobante, Estado Pago/Entrega, Total COP, Vencimiento).
+  - Feedback visual interactivo con spinner durante la exportación y banner toast confirmando la descarga.
+- **Monitor de Pagos Pendientes con Filtros y Acciones 1-Clic (`PendingPaymentsMonitor.tsx`)**:
+  - Nuevo componente autónomo integrado en el Admin Dashboard principal (`activeTab === 'dashboard'`).
+  - **Filtros Avanzados y Búsqueda en Tiempo Real**:
+    - Búsqueda por ID de orden (`ORD-SB-...`), nombre del cliente, correo, celular o número de referencia bancario.
+    - Filtro por estado: Todas, Con Comprobante Reportado (`PAGO_REPORTADO`), Pendiente por Reportar (`PENDIENTE`).
+    - Filtro por pasarela: Todas, Nequi (3045967068), Daviplata (3114139187).
+    - Ordenamiento dinámico: Más recientes, más antiguas, mayor y menor valor en COP.
+  - **Mini HUD de Métricas en Vivo**:
+    - Contador de órdenes pendientes en cola con animación pulsante.
+    - Monto total retenido pendiente de recaudo en COP.
+    - Desglose de órdenes reportadas vs por reportar y cuota Nequi / Daviplata.
+  - **Acciones Rápidas con 1 Solo Clic**:
+    - **Marcar como Verificada (`verifyOrderByAdmin`)**: Actualiza la orden a `PAGO_CONFIRMADO` y `ENTREGADO`, genera y despacha credenciales al chat oficial del cliente, emite notificación push del navegador y registra auditoría.
+    - **Marcar como Cancelada (`cancelOrderByAdmin`)**: Marca la orden y requerimiento de pago como `CANCELADO`, notifica al usuario por chat y actualiza el registro sin necesidad de formularios adicionales.
+  - **Detalles y Herramientas Operativas**:
+    - Botón de 1-clic para abrir conversación directa de WhatsApp con el cliente prellenada con el ID de pedido.
+    - Copiado rápido de identificador de orden al portapapeles.
+    - Modal de inspección de detalles completos con desglose de ítems, precios y notas de comprobante.
+    - Botón para simular pedidos de prueba en caso de bandeja limpia.
 - **Verification Plan**:
   - Run `lint_applet` and `compile_applet` to ensure 0 TypeScript errors.
-  - Test registration with password confirmation and terms checkbox.
-  - Test login with email/password and verify route redirection.
-  - Test 1-click Google Sign-in for both admin and client roles.
+  - Verify D3 SVG rendering across different resolutions and dynamic data reactivity.
+  - Verify trend badge calculations and color grading consistency.
+  - Verify range filters and CSV export functionality across all modules.
+  - Verify 1-click verification and cancellation flows in PendingPaymentsMonitor.
+
+
+

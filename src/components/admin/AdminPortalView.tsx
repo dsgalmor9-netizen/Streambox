@@ -57,6 +57,9 @@ import {
 } from '../../lib/whatsapp';
 import { PremiumAnalyticsWidget } from './PremiumAnalyticsWidget';
 import { PerformanceOverview } from './PerformanceOverview';
+import { SchematicD3Dashboard } from './SchematicD3Dashboard';
+import { exportAdminSalesAndPerformanceCSV } from '../../lib/salesPerformanceExport';
+import { PendingPaymentsMonitor } from './PendingPaymentsMonitor';
 
 interface AdminPortalViewProps {
   initialSubTab?: string;
@@ -159,6 +162,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   // Developer Mode Price Adjuster State
   const [showPriceAdjustModal, setShowPriceAdjustModal] = useState(false);
   const [priceAdjustToast, setPriceAdjustToast] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  // Admin Dashboard Sales & Performance CSV Export State
+  const [isExportingDashboardCSV, setIsExportingDashboardCSV] = useState(false);
+  const [dashboardExportSuccessToast, setDashboardExportSuccessToast] = useState<string | null>(null);
 
   // Metrics
   const pendingPayments = paymentRequests.filter((p) => p.status === 'PAGO_REPORTADO');
@@ -264,6 +271,29 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     document.body.removeChild(link);
   };
 
+  const handleExportDashboardSalesCSV = () => {
+    setIsExportingDashboardCSV(true);
+    try {
+      const result = exportAdminSalesAndPerformanceCSV({
+        orders,
+        paymentRequests,
+        products,
+        categories,
+        allUsers,
+        currentAdminEmail: currentUser?.email || 'd.s.gal.mor.9@gmail.com',
+        totalVolumeCOP,
+        confirmedPayments,
+        pendingPayments,
+      });
+      setDashboardExportSuccessToast(`¡Reporte de ventas y rendimiento descargado exitosamente! (${result.filename})`);
+      setTimeout(() => setDashboardExportSuccessToast(null), 5000);
+    } catch (err) {
+      console.error('Error al exportar ventas y rendimiento a CSV:', err);
+    } finally {
+      setIsExportingDashboardCSV(false);
+    }
+  };
+
   const handleProcessImportCSV = () => {
     if (!csvText.trim()) return;
     const res = importProductsCSV(csvText);
@@ -325,6 +355,22 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </span>
           </div>
 
+          {/* Quick Header Export to CSV Action */}
+          <button
+            type="button"
+            onClick={handleExportDashboardSalesCSV}
+            disabled={isExportingDashboardCSV}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-800/70 text-emerald-300 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-60"
+            title="Exportar reporte de ventas y rendimiento a CSV para análisis offline"
+          >
+            {isExportingDashboardCSV ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span>Exportar CSV</span>
+          </button>
+
           <button
             onClick={() => {
               logout();
@@ -343,6 +389,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       <div className="flex items-center gap-2 border-b border-zinc-800 pb-3 mb-8 overflow-x-auto no-scrollbar">
         {[
           { id: 'dashboard', label: 'Dashboard', icon: Activity },
+          { id: 'dashboard-d3', label: 'Dashboard D3 Esquemático', icon: TrendingUp, highlight: true },
           { id: 'pagos', label: `Pagos (${pendingPayments.length})`, icon: CreditCard, highlight: pendingPayments.length > 0 },
           { id: 'pedidos', label: `Pedidos (${orders.length})`, icon: ShoppingBag },
           { id: 'clientes', label: `Clientes (${allUsers.length})`, icon: Users },
@@ -386,7 +433,62 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
       {/* SUB-VIEW: DASHBOARD */}
       {activeTab === 'dashboard' && (
-        <div className="space-y-8">
+        <div className="space-y-6">
+          {/* Dashboard Header Bar with 'Export to CSV' Action */}
+          <div className="p-5 rounded-2xl bg-[#14141F] border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-purple-950/80 border border-purple-800/80 flex items-center justify-center text-purple-400 shrink-0 shadow-inner">
+                <BarChart3 className="w-5 h-5 text-purple-300" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-white tracking-wide">
+                    Dashboard de Ventas & Rendimiento Operativo
+                  </h2>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    EN VIVO
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Métricas de facturación en COP, volumen por pasarela (Nequi / Daviplata) y auditoría de transacciones.
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons: Export to CSV */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={handleExportDashboardSalesCSV}
+                disabled={isExportingDashboardCSV}
+                className="group relative flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Descargar informe completo de ventas y rendimiento en formato CSV para análisis offline"
+              >
+                {isExportingDashboardCSV ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <Download className="w-4 h-4 text-white group-hover:translate-y-0.5 transition-transform" />
+                )}
+                <span>Exportar a CSV</span>
+                <span className="px-1.5 py-0.5 rounded bg-black/30 text-[10px] font-mono tracking-tight font-normal text-emerald-100 border border-emerald-400/20">
+                  .CSV
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Toast Notification when CSV is Exported */}
+          {dashboardExportSuccessToast && (
+            <div className="p-3.5 rounded-xl bg-emerald-950/90 border border-emerald-700/80 text-emerald-200 text-xs flex items-center justify-between shadow-lg">
+              <div className="flex items-center gap-2 font-mono">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{dashboardExportSuccessToast}</span>
+              </div>
+              <span className="text-[10px] text-emerald-400/80">Listo para Excel / Sheets / Python</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-5 rounded-2xl bg-[#14141F] border border-zinc-800">
               <div className="flex items-center justify-between text-zinc-400 text-xs mb-2">
@@ -441,81 +543,24 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </div>
           </div>
 
+          {/* Schematic D3 Dashboard (Daily Sales, Top Products, Nequi/Daviplata Gateways) */}
+          <SchematicD3Dashboard />
+
           {/* Performance Overview Recharts Widget (30-day Line & Bar Charts) */}
           <PerformanceOverview />
 
           {/* Premium Analytics Widget with Real-time D3 Line Chart */}
           <PremiumAnalyticsWidget />
 
-          {/* Quick Pending Payments Section */}
-          <div className="p-6 rounded-2xl bg-[#14141F] border border-zinc-800">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-amber-400" />
-                Pagos Reportados Pendientes de Confirmación
-              </h3>
-              <button
-                onClick={() => setActiveTab('pagos')}
-                className="text-xs text-purple-400 hover:underline"
-              >
-                Ver todos ({pendingPayments.length})
-              </button>
-            </div>
+          {/* Monitor de Pagos Pendientes con Filtros y Acciones 1-Clic */}
+          <PendingPaymentsMonitor onNavigateToTab={setActiveTab} />
+        </div>
+      )}
 
-            {pendingPayments.length === 0 ? (
-              <div className="py-8 text-center text-xs text-zinc-500">
-                No hay pagos pendientes de revisión en este momento.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingPayments.map((pay) => (
-                  <div
-                    key={pay.id}
-                    className="p-4 rounded-xl bg-zinc-950 border border-amber-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{pay.userName}</span>
-                        <span className="text-zinc-500">({pay.userEmail})</span>
-                      </div>
-                      <div className="text-zinc-400 mt-1">
-                        Método: <strong className="text-white">{pay.paymentMethod}</strong> · Ref:{' '}
-                        <span className="font-mono text-cyan-400 font-bold">{pay.referenceNumber}</span> · Cel:{' '}
-                        {pay.phoneOrigin}
-                      </div>
-                      {pay.voucherNote && (
-                        <div className="text-zinc-500 text-[11px] mt-0.5">Nota: {pay.voucherNote}</div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-sm text-white">
-                        ${pay.totalCOP.toLocaleString('es-CO')} COP
-                      </span>
-
-                      <button
-                        onClick={() => handleConfirmPayment(pay.id)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        <span>Confirmar</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setSelectedPaymentId(pay.id);
-                          setRejectModalOpen(true);
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 text-xs transition-colors cursor-pointer"
-                      >
-                        Rechazar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* SUB-VIEW: DASHBOARD D3 ESQUEMÁTICO */}
+      {activeTab === 'dashboard-d3' && (
+        <div className="space-y-6">
+          <SchematicD3Dashboard />
         </div>
       )}
 
@@ -1846,10 +1891,29 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {/* SUB-VIEW: ESTADÍSTICAS */}
       {activeTab === 'estadisticas' && (
         <div className="p-6 rounded-2xl bg-[#14141F] border border-zinc-800 space-y-8">
-          <div>
-            <h2 className="text-base font-bold text-white">Estadísticas Comerciales y Rendimiento</h2>
-            <p className="text-xs text-zinc-400 mt-0.5">Indicadores clave de ventas, métodos de pago y conversión en Colombia</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-white">Estadísticas Comerciales y Rendimiento</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">Indicadores clave de ventas, métodos de pago y conversión en Colombia</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportDashboardSalesCSV}
+              disabled={isExportingDashboardCSV}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/90 border border-emerald-700/80 text-emerald-300 hover:text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-60"
+              title="Descargar informe completo de ventas y rendimiento en formato CSV"
+            >
+              {isExportingDashboardCSV ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span>Exportar Reporte a CSV</span>
+            </button>
           </div>
+
+          {/* Schematic D3 Dashboard (Daily Sales, Top Products, Nequi/Daviplata Gateways) */}
+          <SchematicD3Dashboard />
 
           {/* Performance Overview Recharts Widget (30-day Line & Bar Charts) */}
           <PerformanceOverview />

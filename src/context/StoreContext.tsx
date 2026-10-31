@@ -17,6 +17,15 @@ import {
   triggerBrowserDownload,
 } from '../lib/excelExport';
 import {
+  notifyOrderDelivered,
+  notifySubscriptionExpiringSoon,
+  isNotificationSupported,
+  getNotificationPermission,
+  requestBrowserNotificationPermission,
+  sendTestNotification,
+  BrowserNotificationResult,
+} from '../lib/browserNotifications';
+import {
   User,
   UserPreferences,
   Product,
@@ -111,6 +120,8 @@ export interface StoreContextType {
   confirmPaymentByAdmin: (paymentRequestId: string, adminNotes?: string) => boolean;
   rejectPaymentByAdmin: (paymentRequestId: string, reason: string) => boolean;
   deliverOrderCredentials: (orderId: string, credentials: string, instructions: string) => boolean;
+  verifyOrderByAdmin: (orderId: string, adminNotes?: string) => boolean;
+  cancelOrderByAdmin: (orderId: string, reason?: string) => boolean;
   renewService: (orderId: string, paymentMethod: PaymentMethod) => { order: Order; paymentRequest: PaymentRequest } | null;
 
   // Refunds & Claims (Ley 1480 de 2011)
@@ -149,6 +160,7 @@ export interface StoreContextType {
   adminReplyChatMessage: (userId: string, content: string) => void;
   handleChatbotAction: (actionKey: 'MI_PEDIDO' | 'MI_PAGO' | 'MI_VENCIMIENTO' | 'HABLAR_CON_SOPORTE' | 'FAQ') => void;
   requestHumanSupport: (reason?: string) => Promise<boolean>;
+  resetUserChat: (targetUserId?: string) => void;
 
   // Tickets
   tickets: Ticket[];
@@ -160,6 +172,13 @@ export interface StoreContextType {
   notifications: NotificationItem[];
   markNotificationAsRead: (id: string) => void;
   unreadNotificationsCount: number;
+
+  // Browser Push Notifications (Web Notification API)
+  isPushNotificationSupported: boolean;
+  browserNotificationPermission: NotificationPermission;
+  requestPushNotificationPermission: () => Promise<NotificationPermission>;
+  sendPushTestNotification: (type: 'delivery' | 'expiring') => BrowserNotificationResult;
+  notifyOrderDeliveredManually: (orderId: string) => boolean;
 
   // Settings & Promos & Giveaways
   settings: GlobalSettings;
@@ -1809,6 +1828,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setNotifications((prev) => [notif, ...prev]);
 
+    // Dispatch Native Browser Push Notification for order delivery & credentials
+    const deliveredOrderObj: Order = {
+      ...(order || {
+        id: payReq.orderId,
+        userId: payReq.userId,
+        userName: payReq.userName,
+        userEmail: payReq.userEmail,
+        items: [],
+        subtotalCOP: payReq.totalCOP,
+        discountCOP: 0,
+        totalCOP: payReq.totalCOP,
+        paymentRequestId: payReq.id,
+        paymentMethod: payReq.paymentMethod,
+        paymentStatus: 'PAGO_CONFIRMADO',
+        orderStatus: 'ENTREGADO',
+        createdAt: payReq.createdAt,
+      }),
+      paymentStatus: 'PAGO_CONFIRMADO',
+      orderStatus: 'ENTREGADO',
+      confirmedAt: timestamp,
+      deliveredAt: timestamp,
+      expiresAt: expirationDate.toISOString(),
+      customerPhone: order?.customerPhone || payReq.phoneOrigin,
+      credentialsDelivered: credentials,
+      deliveryInstructions: instructions,
+    };
+    notifyOrderDelivered(deliveredOrderObj);
+
     logAuditAction('PAGO_CONFIRMADO', payReq.id, `Confirmado por ${adminEmail}. Monto: $${payReq.totalCOP} COP. Notas: ${adminNotes || 'Ninguna'}`);
     return true;
   };
@@ -1906,7 +1953,156 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setChatMessages((prev) => [...prev, deliveryMsg]);
 
+    // Dispatch Native Browser Push Notification
+    const deliveredOrderObj: Order = {
+      ...order,
+      orderStatus: 'ENTREGADO',
+      deliveredAt: timestamp,
+      credentialsDelivered: credentials,
+      deliveryInstructions: instructions,
+    };
+    notifyOrderDelivered(deliveredOrderObj);
+
     logAuditAction('ENTREGA_PEDIDO', order.id, 'Credenciales e instrucciones enviadas al cliente');
+    return true;
+  };
+
+  const verifyOrderByAdmin = (orderId: string, adminNotes?: string): boolean => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return false;
+
+    if (order.paymentRequestId) {
+      const payReq = paymentRequests.find((p) => p.id === order.paymentRequestId);
+      if (payReq) {
+        return confirmPaymentByAdmin(
+          order.paymentRequestId,
+          adminNotes || 'Verificado con 1-clic desde Monitor de Pagos Pendientes'
+        );
+      }
+    }
+
+    const timestamp = new Date().toISOString();
+    const adminEmail = currentUser?.email || 'd.s.gal.mor.9@gmail.com';
+    const firstItem = order.items && order.items[0] ? order.items[0].productName : 'Suscripción Streaming';
+    const credentials = `Acceso: ${firstItem.toLowerCase().replace(/\s+/g, '_')}@streambox.vip | PIN / Clave: SB${Math.floor(100000 + Math.random() * 900000)}*`;
+    const instructions = `1. Inicia sesión en la plataforma oficial del servicio.\n2. Ingresa con los datos proporcionados.\n3. Disfruta tu contenido sin restricciones. Tienes soporte y garantía activa durante todo tu período.`;
+
+    const expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + 30);
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              paymentStatus: 'PAGO_CONFIRMADO',
+              orderStatus: 'ENTREGADO',
+              confirmedAt: timestamp,
+              deliveredAt: timestamp,
+              expiresAt: expirationDate.toISOString(),
+              credentialsDelivered: credentials,
+              deliveryInstructions: instructions,
+            }
+          : o
+      )
+    );
+
+    const confirmChatMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      userId: order.userId,
+      sender: 'ADMIN',
+      senderName: 'Administración StreamBox',
+      content: `¡PAGO CONFIRMADO!\nTu orden #${order.id} fue verificada exitosamente con 1-clic por el equipo administrativo.\n\n📦 DATOS DE ENTREGA:\n${credentials}\n\n📋 INSTRUCCIONES:\n${instructions}`,
+      timestamp,
+      orderId: order.id,
+    };
+    setChatMessages((prev) => [...prev, confirmChatMsg]);
+
+    const notif: NotificationItem = {
+      id: `notif-${Date.now()}`,
+      userId: order.userId,
+      type: 'PAYMENT_CONFIRMED',
+      title: '¡Pago Verificado!',
+      message: `Tu pago de $${order.totalCOP.toLocaleString('es-CO')} COP fue confirmado. El pedido ya está disponible en tu chat.`,
+      read: false,
+      createdAt: timestamp,
+      linkTab: 'chat',
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    notifyOrderDelivered({
+      ...order,
+      paymentStatus: 'PAGO_CONFIRMADO',
+      orderStatus: 'ENTREGADO',
+      confirmedAt: timestamp,
+      deliveredAt: timestamp,
+      expiresAt: expirationDate.toISOString(),
+      credentialsDelivered: credentials,
+      deliveryInstructions: instructions,
+    });
+
+    logAuditAction('ORDEN_VERIFICADA_1CLIC', order.id, `Marcada como Verificada por ${adminEmail}`);
+    return true;
+  };
+
+  const cancelOrderByAdmin = (orderId: string, reason?: string): boolean => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return false;
+
+    const timestamp = new Date().toISOString();
+    const adminEmail = currentUser?.email || 'd.s.gal.mor.9@gmail.com';
+    const cancelReason = reason || 'Orden cancelada por administración desde Monitor de Pagos Pendientes';
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              paymentStatus: 'CANCELADO',
+              orderStatus: 'CANCELADO',
+            }
+          : o
+      )
+    );
+
+    if (order.paymentRequestId) {
+      setPaymentRequests((prev) =>
+        prev.map((p) =>
+          p.id === order.paymentRequestId
+            ? {
+                ...p,
+                status: 'CANCELADO',
+                rejectionReason: cancelReason,
+              }
+            : p
+        )
+      );
+    }
+
+    const cancelChatMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      userId: order.userId,
+      sender: 'ADMIN',
+      senderName: 'Administración StreamBox',
+      content: `ORDEN CANCELADA: Tu orden #${order.id} por $${order.totalCOP.toLocaleString('es-CO')} COP fue cancelada por el equipo administrativo. Motivo: ${cancelReason}. Si necesitas asistencia, responde a este chat.`,
+      timestamp,
+      orderId: order.id,
+    };
+    setChatMessages((prev) => [...prev, cancelChatMsg]);
+
+    const notif: NotificationItem = {
+      id: `notif-${Date.now()}`,
+      userId: order.userId,
+      type: 'PAYMENT_REJECTED',
+      title: 'Orden Cancelada',
+      message: `Tu orden ${order.id} ha sido cancelada. Comunícate por chat si requieres asistencia.`,
+      read: false,
+      createdAt: timestamp,
+      linkTab: 'chat',
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    logAuditAction('ORDEN_CANCELADA_1CLIC', order.id, `Marcada como Cancelada por ${adminEmail}. Motivo: ${cancelReason}`, false);
     return true;
   };
 
@@ -2360,6 +2556,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     sendChatMessage(actionKey.replace(/_/g, ' '), actionKey);
   };
 
+  const resetUserChat = (targetUserId?: string) => {
+    const uid = targetUserId || (currentUser ? currentUser.id : 'usr-client-demo');
+    const timestamp = new Date().toISOString();
+
+    const initialWelcomeMsg: ChatMessage = {
+      id: `msg-welcome-${Date.now()}`,
+      userId: uid,
+      sender: 'BOT',
+      senderName: 'StreamBot AI',
+      content: '¡Hola! He reiniciado la conversación en vivo. Soy StreamBot AI, tu asistente virtual con Gemini 3.8 Flash. ¿En qué puedo ayudarte hoy?\n\nPuedes consultar el estado de tu pedido, verificar tus pagos por Nequi/Daviplata o solicitar atención con un asesor humano en cualquier momento.',
+      timestamp,
+    };
+
+    setChatMessages((prev) => {
+      // Keep messages from other users, replace target user's messages with fresh welcome message
+      const otherMessages = prev.filter((m) => m.userId !== uid && m.userId !== 'ALL');
+      const updated = [...otherMessages, initialWelcomeMsg];
+      localStorage.setItem('sb_chat_messages', JSON.stringify(updated));
+      return updated;
+    });
+
+    setChatMode('BOT_ACTIVE');
+    setIsBotTyping(false);
+    logAuditAction('REINICIO_CHAT_USUARIO', `Usuario ${uid}`, 'El usuario reinició su sesión de chat en vivo.');
+  };
+
   // Ticket Operations
   const createTicket = (
     subject: string,
@@ -2451,6 +2673,50 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const unreadNotificationsCount = notifications.filter(
     (n) => !n.read && (currentUser ? n.userId === currentUser.id : true)
   ).length;
+
+  // Browser Push Notifications
+  const isPushNotificationSupported = isNotificationSupported();
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>(() =>
+    getNotificationPermission()
+  );
+
+  const requestPushNotificationPermission = async (): Promise<NotificationPermission> => {
+    const perm = await requestBrowserNotificationPermission();
+    setBrowserNotificationPermission(perm);
+    return perm;
+  };
+
+  const sendPushTestNotification = (type: 'delivery' | 'expiring'): BrowserNotificationResult => {
+    return sendTestNotification(type);
+  };
+
+  const notifyOrderDeliveredManually = (orderId: string): boolean => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) return false;
+    return notifyOrderDelivered(targetOrder, true);
+  };
+
+  // Push Notification Watcher: Evaluates active delivered orders for expiring soon alerts (<= 3 days)
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    const userOrdersToCheck = orders.filter((o) => {
+      if (currentUser && o.userId !== currentUser.id) return false;
+      return o.orderStatus === 'ENTREGADO' && !!o.expiresAt;
+    });
+
+    userOrdersToCheck.forEach((order) => {
+      if (!order.expiresAt) return;
+      const daysRemaining = Math.ceil(
+        (new Date(order.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Alert if subscription expires in <= 3 days (including today or yesterday)
+      if (daysRemaining <= 3 && daysRemaining >= -1) {
+        notifySubscriptionExpiringSoon(order, daysRemaining);
+      }
+    });
+  }, [orders, currentUser]);
 
   // Settings & Promos (Protected by Custom Claim SUPER_ADMIN)
   const updateSettings = (newSettings: Partial<GlobalSettings>) => {
@@ -2657,6 +2923,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         confirmPaymentByAdmin,
         rejectPaymentByAdmin,
         deliverOrderCredentials,
+        verifyOrderByAdmin,
+        cancelOrderByAdmin,
         renewService,
         chatMessages,
         chatMode,
@@ -2665,6 +2933,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         adminReplyChatMessage,
         handleChatbotAction,
         requestHumanSupport,
+        resetUserChat,
         tickets,
         createTicket,
         replyTicket,
@@ -2672,6 +2941,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         notifications,
         markNotificationAsRead,
         unreadNotificationsCount,
+        isPushNotificationSupported,
+        browserNotificationPermission,
+        requestPushNotificationPermission,
+        sendPushTestNotification,
+        notifyOrderDeliveredManually,
         settings,
         updateSettings,
         promotions,
